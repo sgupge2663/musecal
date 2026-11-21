@@ -126,6 +126,7 @@ JVM スクショテスト（Roborazzi + Robolectric、エミュレータなし�
   - (b) 掃除前の audit: 「要掃除 5 件（prune で消せる: 3 件 / 保留: 2 件）」、終了コード 2。dry-run は削除予定に A（local＋worktree＋remote）と E だけを挙げ、実行後もブランチ一覧は不変。prune で worktree .worktrees/claude-demo-merged、local claude/demo-merged、remote claude/demo-merged、remote codex/demo-remote-only を削除。bare 側に残ったのは main・claude/demo-unmerged・claude/demo-fresh。C の未コミットファイル wip.txt は残存。掃除後の audit は「消せる 0 件 / 保留 2 件」（C と、D のリモート）
   - 追加確認: main 以外の worktree から prune すると、git branch -d が拒否する状態のブランチは worktree も外さずに対象外として報告し、主作業ツリーから実行すると消えた
   - pre-push: 削除のみの入力 → 「ブランチ削除のみのためチェックを省略」exit 0。コードを送る入力（check.sh の無い場所）→ 従来どおり停止 exit 1
+  - check.sh 成功（ローカル）、ブランチ CI Build APK run 44918250869 = success（a7cb8a0）。push 後の audit では origin/claude/branch-ops が「作業中 — 未統合」、結果はクリーン
   - 証拠ファイル: `work/branch_ops_demo.log`・`work/branch_ops_audit_real.log`（Git 管理外。再現は `bash work/branch_ops_demo.sh <scripts/branch_ops.sh の絶対パス>`）
 - AI判定: 適合（完了条件 BO-2〜BO-4 を満たす）。実演の途中で「作りたてのローカルブランチと同名のリモートブランチが消える対象になる」欠陥を見つけて修正済み（同名ローカルが守られていればリモートも守る）
 - 人判定: 未実施

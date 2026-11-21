@@ -4,7 +4,7 @@
   - 内容: Google Sign-In の導線（未ログイン時の案内画面＋ログインボタン）、ログイン状態の保持と表示、ログアウト
   - 完了条件: 実機で本人のアカウントでログインでき、再起動後もログイン状態が保たれる。権限は calendar.readonly のみ要求する
   - 検証方法: 実機スクショ＋ユーザーの確認。要求 scope はコードと同意画面で照合
-  - 状態: 実装済み（ブランチ `claude/v11-signin`、worktree `.worktrees/claude-v11`）。方式は Credential Manager（GetGoogleIdOption）＋ AuthorizationClient（scope は calendar.readonly のみ、CalendarAuthTest で固定）。`assembleDebug testDebugUnitTest` 成功（単体テスト 7件全通過）。**実機検証は未実施**： Google Cloud 側の OAuth クライアント作成が完了しておらず、加えて Credential Manager 用に「ウェブアプリケーション」タイプのクライアント ID（R.string.google_web_client_id、現在プレースホルダ）の発行と差し替えが必要（proposal の前提への追記を参照）。完了条件の「実機でログインできる」「再起動後の保持」はクライアント ID 設定後に実機で確認する
+  - 状態: 実装済み（ブランチ `claude/v11-signin`、worktree `.worktrees/claude-v11`）。方式は Credential Manager（GetGoogleIdOption）＋ AuthorizationClient。Codex レビューは条件付き受理可 → 条件対応済み: (1) テスト強化 — 要求 scope の集合を `CalendarAuth.REQUESTED_SCOPE_URIS` に集約し（認可要求は必ずこの一覧から組み立てる）、CalendarAuthTest がその一覧そのもの（AuthorizationClient へ渡す scope の集合。Scope オブジェクトへの変換は1対1のラップのみ）が calendar.readonly 1件のみであることを検証する（従来は scope 定数の文字列のみの検証だった）。(2) Web クライアント ID 実値差し替え済み — Google Cloud プロジェクト「musecal」の Web クライアント ID を `R.string.google_web_client_id` に設定（Android クライアントも作成済み）。`scripts/check.sh` 成功（assembleDebug / testDebugUnitTest / lintDebug、単体テスト 8件全通過）。**実機検証は未実施**（ユーザーの実機でログイン試行待ち）。完了条件の「実機でログインできる」「再起動後の保持」は実機で確認する
 
 - [ ] V1-2 カレンダー一覧とタブ対応
   - 内容: calendarList 取得。既存タブ（メイン / AI木曜会 / 日本の祝日）を実カレンダーに対応づけ、タブの色線はカレンダー色を使う

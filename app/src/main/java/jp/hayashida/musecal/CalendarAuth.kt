@@ -119,7 +119,7 @@ class CalendarAuth(context: Context) {
      */
     suspend fun authorizeCalendar(): CalendarAccess {
         val request = GmsAuthorizationRequest.builder()
-            .setRequestedScopes(listOf(Scope(CALENDAR_READONLY_SCOPE)))
+            .setRequestedScopes(requestedScopes())
             .build()
         return try {
             val result = authorizationClient.authorize(request).await()
@@ -143,6 +143,15 @@ class CalendarAuth(context: Context) {
     companion object {
         /** 要求する権限は Calendar 読み取り専用のみ（proposal の範囲）。 */
         const val CALENDAR_READONLY_SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
+
+        /**
+         * AuthorizationClient へ実際に要求する scope の集合（URI の一覧）。
+         * 認可要求は必ずこの一覧から組み立てる（CalendarAuthTest がこの一覧そのものを検証する）。
+         */
+        val REQUESTED_SCOPE_URIS: List<String> = listOf(CALENDAR_READONLY_SCOPE)
+
+        /** [REQUESTED_SCOPE_URIS] を AuthorizationClient 用の [Scope] 一覧に変換する（1対1のラップのみ）。 */
+        fun requestedScopes(): List<Scope> = REQUESTED_SCOPE_URIS.map(::Scope)
 
         private const val PREFS_NAME = "calendar_auth"
         private const val KEY_EMAIL = "email"

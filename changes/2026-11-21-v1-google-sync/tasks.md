@@ -50,7 +50,7 @@
       - 修正: CalEvent に API 照合用の区間 matchStart / matchEnd（Instant）を表示日とは別に持たせた。時間指定は start/end の時刻、終日は date をカレンダーのタイムゾーンの 0:00 として時刻化（end.date は排他的）。カレンダーのタイムゾーンは events.list 応答の最上位 timeZone（リファレンス上「The time zone of the calendar」）から取り、FIELDS に timeZone を追加。読めないときは端末 TZ。EventWindowStore.put は取得時の端末 TZ を受け取り、その窓の timeMin/timeMax（EventWindow.timeMin/timeMax。取得 URL と同じ計算）に対して「matchEnd > timeMin かつ matchStart < timeMax」の予定だけを除去（API と同じ判定）。照合区間を持たない予定（同梱サンプル）だけ従来の表示日判定。表示日（帯の位置）は変えていない
       - テスト（GoogleEventsTest に5件追加、計28件）: (1) 照合区間がカレンダー TZ で時刻化され表示日はそのまま・timeZone 欠落時は端末 TZ・時間指定は時刻そのもの (2) 端末 Asia/Tokyo×カレンダー America/Los_Angeles で 11/29 窓に保持した 1/2 終日を削除 → 1/3 窓の完全応答で消える（範囲外の 12/20 は残る） (3) 同条件で範囲外（12/24）へ移動 → 旧日付 1/2 に残らず、旧窓の再取得で 12/24 に出る (4) 逆向き（カレンダー Pacific/Kiritimati +14 の 1/3 終日）が 11/22 窓（timeMax 1/3 00:00 JST）の完全応答に無ければ消える (5) 同一 TZ の境界（窓開始ちょうどで終わる終日・時間指定、窓終了ちょうどから始まる終日）は除去しない。既存の削除反映・移動・重複除去のテストは copy() で日付だけ変えていた予定を JSON からの変換で作り直した（照合区間を日付と一致させるため）
       - 陰性対照: 除去判定を一時的に旧来の表示日判定へ戻して GoogleEventsTest を実行 → (2)(3)(4) の3件だけが失敗（28件中3件）。戻した後のソースで check.sh を実施
-      - 検証: `scripts/check.sh` 成功（assembleDebug / testDebugUnitTest / lintDebug）。単体テスト 56件（失敗 0、省略 1＝RealEventsDumpTest）、Roborazzi ベースライン3画面に差分なし。ブランチ CI は下の追記を参照
+      - 検証: `scripts/check.sh` 成功（assembleDebug / testDebugUnitTest / lintDebug）。単体テスト 56件（失敗 0、省略 1＝RealEventsDumpTest）、Roborazzi ベースライン3画面に差分なし。修正コミット 628ab08 のブランチ CI（Build APK）成功: run 44945680277（https://github.com/sgupge2663/musecal/actions/runs/44945680277）
       - 未確認: 実 API（カレンダー TZ が端末と異なる実カレンダー）での挙動は未確認（静的な仕様との照合と単体テストのみ）。実機照合はユーザーの最終チェックの範囲
 
 - [ ] V1-4 キャッシュと更新

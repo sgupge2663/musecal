@@ -33,6 +33,8 @@ data class CalEvent(
     val start: ZonedDateTime?,
     val end: ZonedDateTime?,
     val colorId: String?,
+    /** 所属カレンダーの calendarId（V1-2）。タブの表示 ON/OFF はこの値で判定する。 */
+    val calendarId: String,
     val calendarName: String,
     val calendarColor: Color,
     val location: String,
@@ -60,6 +62,7 @@ fun loadEvents(context: Context, zone: ZoneId = ZoneId.systemDefault()): List<Ca
     return (0 until arr.length()).map { i ->
         val o = arr.getJSONObject(i)
         val allDay = o.optBoolean("allDay", false)
+        val calName = o.str("calendarName") ?: ""
         val calColor = parseHex(o.str("calendarColor"), Color(0xFF9E9E9E))
         val common = { s: LocalDate, e: LocalDate, zs: ZonedDateTime?, ze: ZonedDateTime? ->
             CalEvent(
@@ -69,7 +72,9 @@ fun loadEvents(context: Context, zone: ZoneId = ZoneId.systemDefault()): List<Ca
                 endDateInclusive = if (e < s) s else e,
                 start = zs, end = ze,
                 colorId = o.str("colorId"),
-                calendarName = o.str("calendarName") ?: "",
+                // サンプルには calendarId が無いので、既存タブ名から正本の calendarId を引く（V1-3 で実データに替わる）
+                calendarId = o.str("calendarId") ?: knownCalendarIdForName(calName) ?: calName,
+                calendarName = calName,
                 calendarColor = calColor,
                 location = o.str("location") ?: "",
             )

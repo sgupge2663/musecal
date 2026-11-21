@@ -106,3 +106,11 @@ JVM スクショテスト（Roborazzi + Robolectric、エミュレータなし�
 - 結果: アカウント選択画面に本人のアカウントが表示され、kou1995yurin530@gmail.com を選択 → 「Google で確認されていません」警告（同意画面が Testing 状態のため想定どおり）を続行 → サインイン済みの月表示（メール帯＋サインアウトボタン）を確認。完了条件「実機で本人のアカウントでログインできる」を満たす
 - 未確認: 再起動後のログイン保持、サインアウトで案内画面に戻ること（明示確認なし。次回起動時に自然に確認される見込み）
 - AI判定 / 人判定: 人判定=ログイン成功（ユーザーの実機スクショが証拠）
+
+### 2026-11-21 v1 V1-2 カレンダー一覧とタブ対応（ブランチ claude/v12-calendar-list）
+- 対象: ブランチ `claude/v12-calendar-list`（main d0c81b7 から分岐）。CI run はコミットメッセージと Muse への報告で参照
+- 入力・経路: 単体テスト（CalendarsTest）で calendarList → タブの対応づけを検証。スクショテスト（ScreenshotTest）は月表示のタブを calendarList 実物（2026-11-21 取得の3件）のフィクスチャから `mapCalendarTabs` で作って描画
+- 状態: JVM（Robolectric）、w360dp-h800dp-xxhdpi、Asia/Tokyo。予定はサンプルのまま（V1-3 で差し替え）
+- 結果: `scripts/check.sh` 成功（単体テスト 21件全通過、うち CalendarsTest 10件）。Roborazzi 3画面は verify で一致し、`recordRoborazziDebug` で再記録しても PNG の差分なし（month_view.png sha1 a85504c…）。月表示のタブ帯を切り出して目視し、メイン=#9fe1e7・AI木曜会=#fad165・日本の祝日=#9a9cff の色線を確認
+- QC-05: AI判定=適合見込み（タブの ON/OFF を calendarId で判定、色線は calendarList の色） / 人判定=未確認（実機確認は V1-3 後に実データ版でまとめて行う）
+- 未確認: 実機での calendarList 取得（実 API 呼び出し）と、各タブにそのカレンダーの予定だけが出ること（V1-2 完了条件。V1-3 後）

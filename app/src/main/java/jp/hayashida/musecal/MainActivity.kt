@@ -59,6 +59,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.State
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -205,27 +206,38 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    // V1-2: calendarList から対応づけた下部タブ。取得できるまでは空（サンプルのタブで実データを装わない）。
+    var tabs by remember { mutableStateOf<List<CalendarTab>>(emptyList()) }
+
+    fun loadCalendarList(accessToken: String) {
+        scope.launch {
+            runCatching { CalendarListApi.fetchAll(accessToken) }
+                .onSuccess { tabs = mapCalendarTabs(it) }
+                .onFailure {
+                    Toast.makeText(context, "カレンダー一覧を取得できませんでした: ${it.message}", Toast.LENGTH_LONG).show()
+                }
+        }
+    }
+
     // Calendar 認可の同意画面（AuthorizationClient の resolution）の結果受け口。
     val consentLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
-        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-            val granted = runCatching {
-                auth.authorizationResultFromIntent(result.data!!).accessToken != null
-            }.getOrDefault(false)
-            Toast.makeText(
-                context,
-                if (granted) "カレンダーへのアクセスが許可されました" else "カレンダーへのアクセスが許可されませんでした",
-                Toast.LENGTH_SHORT,
-            ).show()
+        val token = if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            runCatching { auth.authorizationResultFromIntent(result.data!!).accessToken }.getOrNull()
+        } else null
+        if (token != null) {
+            loadCalendarList(token)
+        } else {
+            Toast.makeText(context, "カレンダーへのアクセスが許可されませんでした", Toast.LENGTH_SHORT).show()
         }
     }
 
     fun requestCalendarAccess() {
         scope.launch {
             when (val access = auth.authorizeCalendar()) {
-                // V1-1 ではトークンを使わない。実データ取得（V1-3）が呼ぶたびに取り直す。
-                is CalendarAuth.CalendarAccess.Granted -> Unit
+                // トークンは保存せず、その場の取得にだけ使う（V1-3 以降も取得のたびに取り直す）。
+                is CalendarAuth.CalendarAccess.Granted -> loadCalendarList(access.accessToken)
                 is CalendarAuth.CalendarAccess.ConsentRequired ->
                     consentLauncher.launch(IntentSenderRequest.Builder(access.intentSender).build())
                 is CalendarAuth.CalendarAccess.Failed ->
@@ -239,14 +251,21 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     }
 
     val current = account
+    // サインイン済みのアカウントが決まるたびに（サインイン直後・再起動時）カレンダー一覧を取り直す。
+    // 認可済みなら同意画面は出ずにトークンが返る。サインアウトしたらタブを消す。
+    LaunchedEffect(current?.email) {
+        tabs = emptyList()
+        if (current != null) requestCalendarAccess()
+    }
     if (current == null) {
-        SignInScreen(auth) { requestCalendarAccess() }
+        SignInScreen(auth) {}
     } else {
         val events = remember { loadEvents(context) }
         MuseCalApp(
             events, todayState,
             accountEmail = current.email,
             onSignOut = { scope.launch { auth.signOut() } },
+            tabs = tabs,
         )
     }
 }
@@ -337,11 +356,13 @@ fun MuseCalApp(
     todayState: State<LocalDate>,
     accountEmail: String,
     onSignOut: () -> Unit,
+    /** V1-2: calendarList から対応づけた下部タブ（[mapCalendarTabs]）。 */
+    tabs: List<CalendarTab>,
 ) {
     val context = LocalContext.current
-    val calendars = remember(all) { all.map { it.calendarName to it.calendarColor }.distinctBy { it.first } }
+    // 非表示にしたカレンダーの calendarId
     var hidden by remember { mutableStateOf(setOf<String>()) }
-    val index = remember(all, hidden) { EventIndex(all.filter { it.calendarName !in hidden }) }
+    val index = remember(all, hidden) { EventIndex(all.filter { it.calendarId !in hidden }) }
 
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = weekIndexOf(INITIAL_MONTH.atDay(1)))
     val scope = rememberCoroutineScope()
@@ -430,8 +451,8 @@ fun MuseCalApp(
             ) { Text("+", fontSize = 30.sp) }
         }
 
-        CalendarTabBar(calendars, hidden) { name ->
-            hidden = if (name in hidden) hidden - name else hidden + name
+        CalendarTabBar(tabs, hidden) { id ->
+            hidden = if (id in hidden) hidden - id else hidden + id
         }
     }
 
@@ -661,16 +682,18 @@ private fun WeekRow(
 }
 
 @Composable
-private fun CalendarTabBar(calendars: List<Pair<String, Color>>, hidden: Set<String>, onToggle: (String) -> Unit) {
+private fun CalendarTabBar(tabs: List<CalendarTab>, hidden: Set<String>, onToggle: (String) -> Unit) {
     // v0 は各タブの幅が中身任せで、下線（fillMaxWidth）が横スクロールの無制限幅の中で幅0になり見えなかった（§7 差異3）。
     // BC2 と同じく、タブを等幅（画面に最大5つ）にして、カレンダー色の下線をタブ幅いっぱいに引く。
     BoxWithConstraints(Modifier.fillMaxWidth().background(Color.Black).navigationBarsPadding()) {
-        val tabW = maxWidth / calendars.size.coerceIn(1, 5)
+        val tabW = maxWidth / tabs.size.coerceIn(1, 5)
         Row(Modifier.horizontalScroll(rememberScrollState())) {
-            calendars.forEach { (name, color) ->
-                val off = name in hidden
+            tabs.forEach { tab ->
+                val name = tab.label
+                val color = tab.color
+                val off = tab.calendarId in hidden
                 Column(
-                    Modifier.width(tabW).clickable { onToggle(name) }.padding(top = 10.dp),
+                    Modifier.width(tabW).clickable { onToggle(tab.calendarId) }.padding(top = 10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(

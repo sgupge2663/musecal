@@ -11,6 +11,13 @@
   - 内容: calendarList 取得。既存タブ（メイン / AI木曜会 / 日本の祝日）を実カレンダーに対応づけ、タブの色線はカレンダー色を使う
   - 完了条件: 実機で3カレンダーが正しく切り替わり、各タブにそのカレンダーの予定だけが出る
   - 検証方法: 実機スクショと Google Calendar（Web）との目視照合
+  - 状態（2026-11-21、Claude Code）: 実装済み（ブランチ `claude/v12-calendar-list`、worktree `.worktrees/claude-v12`）。レビュー待ち
+    - 取得: サインイン済みアカウントが決まるたび（サインイン直後・再起動時）に CalendarAuth.authorizeCalendar() でトークンを得て、Calendar API v3 `users/me/calendarList` を REST で直接取得（`Calendars.kt` の CalendarListApi。HttpURLConnection＋org.json、pageToken で全ページ）。google-api-client は入れない（GET 1種だけのため）。トークンは保存しない。Manifest に INTERNET 権限を追加
+    - 対応づけ（`mapCalendarTabs`）: 既存3タブは KNOWN_TABS（V1-3 欄の calendarList 実物が正本）と calendarId の**完全一致**でのみ対応。タブ順は メイン / AI木曜会 / 日本の祝日 で固定。色線は calendarList の backgroundColor（読めないときだけ KNOWN_TABS の色）。未知のカレンダーは既存タブの後ろに calendarList の順で追加（ラベル summaryOverride→summary→id、色が無ければ灰）。calendarList に無い既存タブは出さない。重複 id は先頭の1件
+    - 土台: CalEvent に calendarId を追加し、タブの表示 ON/OFF を calendarId で判定するよう変更（従来は calendarName）。V1-3 は events.list の結果に calendarId を付ければタブ単位でフィルタできる。月表示の予定は当面サンプルのまま（サンプルには calendarId が無いため、既存タブ名から KNOWN_TABS の calendarId を引いて付与）
+    - 取得前・取得失敗時: タブは空（サンプルのタブで実データを装わない）。失敗時は理由をトーストで表示。キャッシュは V1-4
+    - 検証: `scripts/check.sh` 成功（assembleDebug / testDebugUnitTest / lintDebug、単体テスト 21件全通過。うち CalendarsTest 10件: 完全一致の対応、返却順に依らないタブ順、色の取得とフォールバック、大文字・空白・同名の不一致、未知カレンダーの追加順とラベル、既存タブ欠落、重複 id、JSON 読み取り）。Roborazzi 3画面はベースライン不変（recordRoborazziDebug で再記録しても PNG に差分なし。サンプルの色と calendarList 実物の色が同じため）
+    - **未確認（実機確認は V1-3 後）**: 完了条件「実機で3カレンダーが正しく切り替わり、各タブにそのカレンダーの予定だけが出る」は、V1-3 の実データ版でまとめて実機確認する。実 API からの calendarList 取得も実機では未確認
 
 - [ ] V1-3 予定の取得と描画への接続
   - 内容: 表示ウィンドウ（6週）の events.list 取得（singleEvents=true）。既存モデルへ変換し、サンプルデータと差し替える。colorId→パレット変換を含む

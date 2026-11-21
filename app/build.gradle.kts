@@ -107,6 +107,8 @@ dependencies {
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
     implementation("com.google.android.gms:play-services-auth:21.3.0")
     testImplementation("junit:junit:4.13.2")
+    // V1-2: calendarList JSON の読み取りを JVM 単体テストで検証する（android.jar の org.json はスタブのため）
+    testImplementation("org.json:json:20240303")
     // EM-1: JVM スクショテスト（Roborazzi + Robolectric + Compose UI Test）
     testImplementation(platform("androidx.compose:compose-bom:2024.12.01"))
     testImplementation("androidx.compose.ui:ui-test-junit4")

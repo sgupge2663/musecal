@@ -58,6 +58,14 @@ class ScreenshotTest {
                     events, todayState,
                     accountEmail = "screenshot@example.jp",
                     onSignOut = {},
+                    // V1-2: 実物の calendarList（2026-11-21 取得）と同じ3件を対応づけたタブ
+                    tabs = mapCalendarTabs(
+                        listOf(
+                            CalendarListEntry("kou1995yurin530@gmail.com", "kou1995yurin530@gmail.com", backgroundColor = "#9fe1e7", primary = true),
+                            CalendarListEntry("mokuyoukai.ai@gmail.com", "AI木曜会", backgroundColor = "#fad165"),
+                            CalendarListEntry("ja.japanese#holiday@group.v.calendar.google.com", "日本の祝日", backgroundColor = "#9a9cff"),
+                        )
+                    ),
                 )
             }
         }

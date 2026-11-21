@@ -10,6 +10,10 @@
   - 内容: GitHub Actions に workflow_dispatch のジョブを追加。Ubuntu ランナー＋KVM でエミュレータを起動し、デバッグ APK をインストール。主要画面の撮影に加え、Compose UI Test 等のシナリオで実際に操作する（タブ切替、日タップ→ポップアップ、月表示のスクロール、未ログイン画面の表示確認）。各ステップのスクショと画面構造ダンプを成果物に上げる
   - 完了条件: 手動実行で操作シナリオまで含めて成功し、PNG と画面構造が成果物から取得できる。サインインは未ログイン状態の確認まで（実アカウントは使わない）
   - 検証方法: 実行ログと成果物を Muse が確認。所要時間も記録する
+  - 実装（2026-11-21、ブランチ claude/em2-ci-emulator）: ワークフロー `.github/workflows/emulator.yml`（workflow_dispatch のみ。build.yml は不変）＋本体スクリプト `.github/scripts/em2_scenario.sh`（`scripts/` は .gitignore の許可リスト制のため、既存ファイルを変えずに置ける場所として .github/ 配下にした）＋ instrumented テスト `app/src/androidTest/`。app/build.gradle.kts は末尾に別ブロックで testInstrumentationRunner と androidTestImplementation を追加しただけ（V1-3 との衝突回避）
+  - 方式の選択: 「adb 入力＋UI Automator」と「Compose UI Test」の併用。理由: 実アプリは未サインインだと案内画面しか出さず（MuseCalRoot）、実アカウントは使わないので、実アプリを起動して操作できるのは案内画面まで。そこで (1) 実アプリの起動〜未ログイン案内の確認は adb（am start・screencap・uiautomator dump）で入口そのものを確かめ、(2) 月表示の操作（タブ切替・日タップ→ポップアップ・スクロール）は EM-1 と同じ前提（サンプル予定・今日=2026-12-16・既存3タブ）で MuseCalApp を描画し Compose UI Test で実エミュレータ上でタップ・スワイプする。Compose は描画を Canvas で行うため予定の文字は画面構造に出ず、座標指定の adb 入力だけでは「操作が効いたか」を判定しにくい。Compose UI Test ならノード指定の操作・待機と、画面の画素差による判定が確実にできる
+  - 証拠: 1ステップごとに PNG（端末のスクリーンショット）・XML（UI Automator dump）・Compose セマンティクスのテキストを成果物 `emulator-evidence-<sha>` に上げる。判定に使った画素差は notes.txt
+  - 実行記録: （CI 実行後に記入）
 
 - [ ] EM-3 QC への組み込み
   - 内容: docs/qc.md の視覚系ケース（QC-03 レイアウト、QC-06 スクロール等）に、エミュレータ／スクショテストでの一次判定の手順と、実機判定が必要な範囲の切り分けを追記する

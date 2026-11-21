@@ -1,0 +1,63 @@
+# EM-2: CI エミュレータジョブ（changes/2026-11-21-emulator-verification/tasks.md の EM-2）。
+# 手動実行（workflow_dispatch）だけで動く。GitHub ホストの Ubuntu ランナーで KVM を有効にして
+# Android エミュレータを起動し、デバッグ APK とテスト APK を入れて操作シナリオを実行する。
+# 各ステップのスクリーンショット（PNG）と画面構造（UI Automator dump の XML・Compose セマンティクス）を
+# 成果物 emulator-evidence-<sha> に上げる。サインインはしない（未ログイン状態の確認まで）。
+# Secrets は使わない（デバッグ署名は自動生成のまま。エミュレータに入れるだけなので共通鍵は不要）。
+name: Emulator scenario
+on:
+  workflow_dispatch:
+    inputs:
+      api-level:
+        description: エミュレータの API レベル
+        default: '34'
+        required: false
+jobs:
+  emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      API_LEVEL: ${{ inputs.api-level || '34' }}
+      EVIDENCE: ${{ github.workspace }}/evidence
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+      - name: Build debug APK and test APK
+        run: ./gradlew assembleDebug assembleDebugAndroidTest --console=plain
+      - id: vars
+        run: |
+          echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          mkdir -p "$EVIDENCE"
+          date -u +%s > "$RUNNER_TEMP/t_start"
+      # エミュレータの起動からシナリオ実行・証拠の取り出しまで（.github/scripts/em2_scenario.sh が本体）
+      - name: Run scenario on emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: ${{ env.API_LEVEL }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: bash .github/scripts/em2_scenario.sh "$EVIDENCE"
+      - name: Timing
+        if: always()
+        run: |
+          start=$(cat "$RUNNER_TEMP/t_start" 2>/dev/null || echo 0)
+          echo "emulator+scenario seconds: $(( $(date -u +%s) - start ))" | tee -a "$EVIDENCE/timing.txt"
+          echo "files:"; (cd "$EVIDENCE" && find . -type f | sort) || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: emulator-evidence-${{ steps.vars.outputs.short }}
+          path: evidence/
+          if-no-files-found: warn

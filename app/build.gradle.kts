@@ -118,3 +118,19 @@ dependencies {
     testImplementation("io.github.takahirom.roborazzi:roborazzi:1.30.1")
     testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.30.1")
 }
+
+// EM-2: CI エミュレータジョブ（.github/workflows/emulator.yml）の instrumented 操作シナリオ。
+// 他ブランチとの衝突を避けるため、既存ブロックには手を入れず末尾に別ブロックで足す。
+android {
+    defaultConfig {
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+}
+
+dependencies {
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
+}

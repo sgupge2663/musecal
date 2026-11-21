@@ -103,7 +103,13 @@ fun textOnBar(bar: Color): Color =
     if (contrastRatio(Color.Black, bar) >= contrastRatio(Color.White, bar)) Color.Black else Color.White
 
 /** 背景 bg の上で読めるよう、色味を保ったまま黒（または白）へ寄せる。 */
-fun readableOn(c: Color, bg: Color, target: Float = 3.2f): Color {
+fun readableOn(c: Color, bg: Color, target: Float = 3.2f): Color =
+    readableCache.getOrPut(Triple(c, bg, target)) { computeReadableOn(c, bg, target) }
+
+// 描画のたびに呼ばれるのでメモ化する（色の組は数十通りしかない）。UI スレッドからのみ呼ぶ。
+private val readableCache = HashMap<Triple<Color, Color, Float>, Color>()
+
+private fun computeReadableOn(c: Color, bg: Color, target: Float): Color {
     if (contrastRatio(c, bg) >= target) return c
     val toward = if (bg.luminance() > 0.4f) Color.Black else Color.White
     var t = 0f
@@ -138,7 +144,13 @@ class EventIndex(events: List<CalEvent>) {
     private val timedByDate: Map<LocalDate, List<CalEvent>> =
         events.filter { !it.isBar }.groupBy { it.startDate }.mapValues { (_, v) -> v.sortedBy { it.start } }
 
-    fun layoutWeek(weekStart: LocalDate): WeekLayout {
+    /** 週レイアウトのメモ。EventIndex は表示中カレンダーの組ごとに作り直すので、無効化はそれで足りる。 */
+    private val weekCache = HashMap<LocalDate, WeekLayout>()
+
+    /** 週のレイアウト（事前計算・メモ化。スクロールで同じ週が再び現れても計算し直さない）。 */
+    fun layoutWeek(weekStart: LocalDate): WeekLayout = weekCache.getOrPut(weekStart) { computeWeek(weekStart) }
+
+    private fun computeWeek(weekStart: LocalDate): WeekLayout {
         val weekEnd = weekStart.plusDays(6)
         val occ = mutableListOf<BooleanArray>()
         val segs = mutableListOf<BarSeg>()

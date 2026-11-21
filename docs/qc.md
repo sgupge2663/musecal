@@ -143,6 +143,7 @@ JVM スクショテスト（Roborazzi + Robolectric、エミュレータなし�
   - 指摘1: H はローカル「要掃除(保留) — git branch -d が拒否する状態（upstream … に未反映のコミットあり）」、リモートも保留で残存。I は「失敗: worktree … を外せませんでした」に続き「失敗: remote origin/claude/demo-wt-fail は同名のローカルブランチが削除できず残っているため残します」、prune の終了コード 1、ローカル・リモートとも残存
   - (c) audit で「要掃除」の5件（local A・I、remote A・I・E）と dry-run の削除予定5件が完全一致（diff 差分なし）。実際の削除は local A・remote A・remote E の3件で、残った2件（local I・remote I）は失敗として報告済み。「audit で要掃除でないのに消えたもの」は 0 件。掃除後の audit は「消せる 2 件（I）/ 保留 7 件」
   - 本リポジトリ: `scripts/branch_ops.sh audit --no-fetch` は claude/branch-ops（local・remote）が「作業中 — 未統合」、結果クリーン、終了コード 0。`bash -n` 成功
+  - check.sh 成功（ローカル、assembleDebug / testDebugUnitTest / lintDebug OK。pre-push でも再実行され通過）、ブランチ CI Build APK run 44919196388 = success（5f3da7d）
   - 証拠ファイル: `work/branch_ops_demo_v2.log`（修正後）・`work/branch_ops_demo_v2_before.log`（修正前）（Git 管理外）
 - AI判定: 適合（指摘1〜3の対応と追加ケース a〜c を満たす）。再レビューは未実施
 - 人判定: 未実施

@@ -17,7 +17,7 @@
   - 完了条件: 削除のみの push で Gradle が走らず、コードを送る push の gate は不変
   - 検証方法: hook に標準入力を与えた実行結果（docs/qc.md）
 - [x] BO-5 check.sh とブランチ CI（Build APK）を通す
-  - 状態： 完了。`scripts/check.sh` 成功（assembleDebug / testDebugUnitTest / lintDebug OK、ローカル 3分41秒。pre-push でも再実行され通過）。ブランチ CI Build APK run 44918250869 = success（a7cb8a0、成果物 musecal-debug-apk-a7cb8a0）。本記録の追記コミットの run は Muse への報告で参照
+  - 状態： 完了。`scripts/check.sh` 成功（assembleDebug / testDebugUnitTest / lintDebug OK、ローカル 3分41秒。pre-push でも再実行され通過）。ブランチ CI Build APK run 44918250869 = success（a7cb8a0、成果物 musecal-debug-apk-a7cb8a0）。レビュー修正後（BO-7、5f3da7d）も `scripts/check.sh` 成功（ローカル、pre-push でも再実行され通過）、ブランチ CI Build APK run 44919196388 = success（5f3da7d、成果物 musecal-debug-apk-5f3da7d）。本記録の追記コミットの run は Muse への報告で参照
   - 完了条件: `scripts/check.sh` 成功、ブランチ push の Build APK run が success
   - 検証方法: check.sh の出力、`gh run list --branch claude/branch-ops`
 - [x] BO-7 Codex レビュー（a7cb8a0、判定「不可」、work/branch_ops_review_codex.md）の指摘3件を直す

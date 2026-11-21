@@ -2,7 +2,6 @@ package jp.hayashida.musecal
 
 import android.content.Context
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import org.json.JSONArray
 import org.json.JSONObject
@@ -12,6 +11,7 @@ import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -102,24 +102,49 @@ fun contrastRatio(a: Color, b: Color): Float {
 fun textOnBar(bar: Color): Color =
     if (contrastRatio(Color.Black, bar) >= contrastRatio(Color.White, bar)) Color.Black else Color.White
 
-/** 背景 bg の上で読めるよう、色味を保ったまま黒（または白）へ寄せる。 */
-fun readableOn(c: Color, bg: Color, target: Float = 3.2f): Color =
-    readableCache.getOrPut(Triple(c, bg, target)) { computeReadableOn(c, bg, target) }
+/**
+ * 文字色の予定を鮮やか・濃くする shade（仕様 §6、T-108）。
+ * パレット色を HSL に変換し、色相・彩度は保ったまま明度だけを決定的に変換する。
+ * 明るい背景では L' = L × 0.72（濃く）、暗い背景（選択セルの黒）では対称に L' = 1 − (1 − L) × 0.72。
+ * 帯の色には適用しない（帯はパレット原色のまま）。旧 readableOn（コントラスト比に届くまで
+ * 黒/白へ lerp する方式）の置き換え。
+ */
+fun textShade(c: Color, bg: Color): Color {
+    val (h, s, l) = rgbToHsl(c.red, c.green, c.blue)
+    val l2 = if (bg.luminance() > 0.4f) l * 0.72f else 1f - (1f - l) * 0.72f
+    val (r, g, b) = hslToRgb(h, s, l2)
+    return Color(r, g, b, c.alpha)
+}
 
-// 描画のたびに呼ばれるのでメモ化する（色の組は数十通りしかない）。UI スレッドからのみ呼ぶ。
-private val readableCache = HashMap<Triple<Color, Color, Float>, Color>()
-
-private fun computeReadableOn(c: Color, bg: Color, target: Float): Color {
-    if (contrastRatio(c, bg) >= target) return c
-    val toward = if (bg.luminance() > 0.4f) Color.Black else Color.White
-    var t = 0f
-    var r = c
-    while (t < 1f) {
-        t += 0.05f
-        r = lerp(c, toward, t)
-        if (contrastRatio(r, bg) >= target) break
+private fun rgbToHsl(r: Float, g: Float, b: Float): Triple<Float, Float, Float> {
+    val max = maxOf(r, g, b)
+    val min = minOf(r, g, b)
+    val l = (max + min) / 2f
+    val d = max - min
+    if (d == 0f) return Triple(0f, 0f, l)
+    val s = if (l > 0.5f) d / (2f - max - min) else d / (max + min)
+    var h = when (max) {
+        r -> 60f * (((g - b) / d) % 6f)
+        g -> 60f * ((b - r) / d + 2f)
+        else -> 60f * ((r - g) / d + 4f)
     }
-    return r
+    if (h < 0f) h += 360f
+    return Triple(h, s, l)
+}
+
+private fun hslToRgb(h: Float, s: Float, l: Float): Triple<Float, Float, Float> {
+    val chroma = (1f - abs(2f * l - 1f)) * s
+    val x = chroma * (1f - abs((h / 60f) % 2f - 1f))
+    val m = l - chroma / 2f
+    val (r, g, b) = when {
+        h < 60f -> Triple(chroma, x, 0f)
+        h < 120f -> Triple(x, chroma, 0f)
+        h < 180f -> Triple(0f, chroma, x)
+        h < 240f -> Triple(0f, x, chroma)
+        h < 300f -> Triple(x, 0f, chroma)
+        else -> Triple(chroma, 0f, x)
+    }
+    return Triple(r + m, g + m, b + m)
 }
 
 // ---------- 週ごとのレイアウト ----------

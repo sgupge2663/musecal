@@ -1,5 +1,6 @@
 package jp.hayashida.musecal
 
+import android.app.Activity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -8,8 +9,11 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -41,6 +45,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.HorizontalDivider
@@ -49,6 +55,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.State
@@ -84,6 +91,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
+import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -151,7 +159,7 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
-        val events = loadEvents(this)
+        val auth = CalendarAuth(this)
 
         // 画面が見えている間だけ：①開始（復帰）時に取り直す ②次の0時に取り直す ③端末の日付・時刻・TZ変更通知で取り直す
         lifecycleScope.launch {
@@ -180,7 +188,129 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme(colorScheme = lightColorScheme()) {
-                MuseCalApp(events, today)
+                MuseCalRoot(auth, today)
+            }
+        }
+    }
+}
+
+/**
+ * V1-1: サインイン状態で画面を出し分ける入口。
+ * 未サインイン時はサンプル予定を一切出さず、サインイン案内だけを出す（V1-5 の未ログイン画面を兼ねる）。
+ * サインイン済みなら従来の月表示（データは V1-3 の実データ接続までサンプルのまま）。
+ */
+@Composable
+private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
+    val account by auth.account.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // Calendar 認可の同意画面（AuthorizationClient の resolution）の結果受け口。
+    val consentLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            val granted = runCatching {
+                auth.authorizationResultFromIntent(result.data!!).accessToken != null
+            }.getOrDefault(false)
+            Toast.makeText(
+                context,
+                if (granted) "カレンダーへのアクセスが許可されました" else "カレンダーへのアクセスが許可されませんでした",
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
+    fun requestCalendarAccess() {
+        scope.launch {
+            when (val access = auth.authorizeCalendar()) {
+                // V1-1 ではトークンを使わない。実データ取得（V1-3）が呼ぶたびに取り直す。
+                is CalendarAuth.CalendarAccess.Granted -> Unit
+                is CalendarAuth.CalendarAccess.ConsentRequired ->
+                    consentLauncher.launch(IntentSenderRequest.Builder(access.intentSender).build())
+                is CalendarAuth.CalendarAccess.Failed ->
+                    Toast.makeText(
+                        context,
+                        "カレンダーの許可を確認できませんでした: ${access.error.message}",
+                        Toast.LENGTH_LONG,
+                    ).show()
+            }
+        }
+    }
+
+    val current = account
+    if (current == null) {
+        SignInScreen(auth) { requestCalendarAccess() }
+    } else {
+        val events = remember { loadEvents(context) }
+        MuseCalApp(
+            events, todayState,
+            accountEmail = current.email,
+            onSignOut = { scope.launch { auth.signOut() } },
+        )
+    }
+}
+
+/** V1-1 / V1-5: 未サインイン時の案内画面。アプリ名・説明・「Google でログイン」ボタンだけを出す。 */
+@Composable
+private fun SignInScreen(auth: CalendarAuth, onSignedIn: () -> Unit) {
+    val context = LocalContext.current
+    val activity = context as? Activity
+    val scope = rememberCoroutineScope()
+    var signingIn by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    Column(Modifier.fillMaxSize().background(Color.White)) {
+        Row(
+            Modifier.fillMaxWidth().background(Color.Black).statusBarsPadding().height(56.dp)
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("MuseCal", color = Color.White, fontSize = 22.sp)
+        }
+        Column(
+            Modifier.fillMaxSize().padding(horizontal = 32.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text("MuseCal", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Color(0xFF111111))
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Google カレンダーから直接予定を読み込むカレンダーです。\n" +
+                    "予定を表示するには、Google アカウントでログインしてください。\n" +
+                    "アクセスはカレンダーの読み取り専用です。",
+                fontSize = 14.sp, color = Color(0xFF444444), textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(32.dp))
+            Button(
+                onClick = {
+                    val act = activity ?: return@Button
+                    signingIn = true
+                    error = null
+                    scope.launch {
+                        val result = auth.signIn(act)
+                        signingIn = false
+                        result.fold(
+                            onSuccess = { onSignedIn() },
+                            onFailure = { e ->
+                                // キャンセルはエラーとして見せない
+                                if (e !is GetCredentialCancellationException) {
+                                    error = "ログインできませんでした: ${e.message}"
+                                }
+                            },
+                        )
+                    }
+                },
+                enabled = !signingIn && activity != null,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.Black, contentColor = Color.White,
+                ),
+            ) {
+                Text(if (signingIn) "ログイン中…" else "Google でログイン", fontSize = 16.sp)
+            }
+            error?.let {
+                Spacer(Modifier.height(16.dp))
+                Text(it, fontSize = 13.sp, color = SundayRed, textAlign = TextAlign.Center)
             }
         }
     }
@@ -201,7 +331,12 @@ private class GridMetrics(val measurer: TextMeasurer, density: Density, widthPx:
 }
 
 @Composable
-fun MuseCalApp(all: List<CalEvent>, todayState: State<LocalDate>) {
+fun MuseCalApp(
+    all: List<CalEvent>,
+    todayState: State<LocalDate>,
+    accountEmail: String,
+    onSignOut: () -> Unit,
+) {
     val context = LocalContext.current
     val calendars = remember(all) { all.map { it.calendarName to it.calendarColor }.distinctBy { it.first } }
     var hidden by remember { mutableStateOf(setOf<String>()) }
@@ -239,6 +374,20 @@ fun MuseCalApp(all: List<CalEvent>, todayState: State<LocalDate>) {
             Spacer(Modifier.weight(1f))
             // 押した時点の現在日へ（T-102）
             HeaderButton("今日") { scrollToMonth(YearMonth.from(todayState.value)) }
+        }
+        // V1-1：ログイン中アカウントの表示とサインアウト（ヘッダーの黒基調に続く細い帯）
+        Row(
+            Modifier.fillMaxWidth().background(Color.Black).padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                accountEmail, color = Color(0xFFBBBBBB), fontSize = 12.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+            )
+            Text(
+                "サインアウト", color = Color.White, fontSize = 12.sp,
+                modifier = Modifier.clickable(onClick = onSignOut).padding(horizontal = 8.dp, vertical = 2.dp),
+            )
         }
         // 曜日ヘッダー（固定）
         Row(Modifier.fillMaxWidth().background(Color.White).padding(vertical = 4.dp)) {

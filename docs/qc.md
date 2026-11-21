@@ -54,3 +54,10 @@
 - 結果: 旧 readableOn（コントラスト比 3.2 に届くまで黒/白へ lerp し、色相が動き淡くなりがち）を廃し、textShade に置換。定義は HSL で色相・彩度を保持し、明るい背景では L' = L × 0.72、暗い背景（選択セルの黒）では対称に L' = 1 − (1 − L) × 0.72。代表色の変換は単体テスト TextShadeTest（6件）で固定し全通過： #DC2127→#9E181C、#FBD75B→#F0BC06、#FFB878→#FF810F、#5484ED→#1651D1（いずれも白背景）、#FBD75B→#FCE289（黒背景）。`assembleDebug testDebugUnitTest` 成功（lintDebug は VM の中継 TLS 問題のためローカル未実施、CI が gate）
 - AI判定 / 人判定: AI判定=実装済み（証拠つき） / 人判定=適合（2026-11-21 ユーザー実機判定「いいねみやすい」。月表示と日ポップアップの実機スクショが証拠。係数 0.72 のままで確定）
 - 理想 / 対策: 実機で「鮮やか・濃い」と感じられること。人判定で不足なら係数 0.72 を調整する → 適合のため調整なし
+
+### 2026-11-21 v1 V1-1 ログイン基盤（ブランチ claude/v11-signin）
+- 経路: Claude Code 実装（worktree .worktrees/claude-v11）。レビューは別エージェント（Codex）待ち
+- 内容: Credential Manager（GetGoogleIdOption）でサインイン状態を確立し、Calendar 認可は AuthorizationClient（scope は calendar.readonly のみ要求）に分離（CalendarAuth.kt が認証の窓口）。未サインイン時はサンプル予定を出さず案内画面のみ（V1-5 の未ログイン画面を兼ねる）。サインイン済みはヘッダー下の細い帯にメールアドレスとサインアウトを表示。月表示のデータはまだサンプル（実データ接続は V1-3）
+- 証拠: `scripts/check.sh` 成功（assembleDebug / testDebugUnitTest / lintDebug すべて OK）。単体テスト 7 件全通過（TextShadeTest 6 件＋CalendarAuthTest 1 件: 要求 scope が読み取り専用のみであることを固定）
+- 環境メモ: ローカル lint が落ちていた既知問題は、toolchain/truststore.jks に中継プロキシの CA（Hatch Sandbox Egress CA）が含まれていなかったことが原因と判明し、CA を追加して解消した（リポジトリ外の環境修正）。あわせて応答しなくなっていた auth_relay_proxy を再起動した
+- AI判定 / 人判定: AI判定=実装済み（ビルド証拠つき） / 実機検証=**未実施**。Google Cloud 側の OAuth クライアント作成が未完了で、Credential Manager 用の Web クライアント ID（R.string.google_web_client_id）もプレースホルダのため、実機サインインはまだ成功しない。クライアント ID 設定後に「実機でログインできる・再起動後も保持される・サインアウトで案内画面に戻る」を確認する。固定ケース化は V1-6 で行う

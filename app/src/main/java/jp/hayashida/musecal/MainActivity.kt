@@ -107,8 +107,10 @@ private val INITIAL_MONTH: YearMonth = YearMonth.of(2026, 12)
 private const val VISIBLE_WEEKS = 6
 
 // 行の高さの下限（通常の文字倍率ではこの値。文字倍率を上げると実測した文字の高さに合わせて伸びる）
-private val DATE_H_MIN = 22.dp   // 日付数字の行
-private val LINE_H_MIN = 17.dp   // 予定1行
+// T-107：BC2 スクショ実測（同一端末・921px 幅で約 2.56px/dp）に合わせた値。
+//   BC2：日付行 ≈ 49px ≈ 19dp、予定1行（＝帯の高さ）≈ 34px ≈ 13.3dp。v0.1 は 22dp / 17dp で間延びしていた。
+private val DATE_H_MIN = 19.dp   // 日付数字の行
+private val LINE_H_MIN = 13.dp   // 予定1行
 
 private val GridLine = Color(0xFFDDDDDD)
 private val OutsideBg = Color(0xFFEDEDED)
@@ -117,12 +119,17 @@ private val SundayRed = Color(0xFFD32F2F)
 private val SaturdayBlue = Color(0xFF1E63C4)
 private val WeekNoGray = Color(0xFF9E9E9E)
 
-private val CellText = TextStyle(fontSize = 12.5.sp, lineHeight = 16.sp)
-private val BarText = CellText.copy(fontWeight = FontWeight.Bold)
-private val DateText = TextStyle(fontSize = 16.sp, lineHeight = 20.sp)
+// T-107：文字の大きさ・太さも BC2 実測に合わせる。
+//   予定文字の字面の高さ BC2 ≈ 27.5px / v0.1 ≈ 31px → 12.5sp × 27.5/31 ≈ 11sp。行送りは帯の高さ 13.3dp に合わせて 13sp。
+//   帯の文字は BC2 では標準の太さ（線幅 ≈ 字高の 12%）。v0.1 は Bold（≈ 29%）で重く見えていたので標準に戻す。
+//   時間指定予定の文字は v0.1 も BC2 も標準の太さで同等（線幅/字高 ≈ 0.165）なので太さは変えない。
+private val CellText = TextStyle(fontSize = 11.sp, lineHeight = 13.sp)
+private val BarText = CellText
+// 日付数字の字面の高さ BC2 ≈ 28px / v0.1 ≈ 30px → 15sp。
+private val DateText = TextStyle(fontSize = 15.sp, lineHeight = 17.sp)   // 17sp + 上下 1dp ずつ = 19dp
 private val DateTextToday = DateText.copy(fontWeight = FontWeight.Bold)
 private val WeekNoText = TextStyle(fontSize = 10.sp, lineHeight = 12.sp)
-private val MoreText = TextStyle(fontSize = 11.sp, lineHeight = 14.sp)
+private val MoreText = TextStyle(fontSize = 10.sp, lineHeight = 12.sp)   // 予定1行（13sp）の中に収める
 
 private fun sundayOf(d: LocalDate): LocalDate = d.minusDays((d.dayOfWeek.value % 7).toLong())
 private fun weekIndexOf(d: LocalDate): Int =
@@ -368,15 +375,18 @@ private fun buildWeekRender(weekStart: LocalDate, index: EventIndex, m: GridMetr
             val ev = seg.event
             val realStart = dates[runStart] == ev.startDate
             val realEnd = dates[runEnd] == ev.endDateInclusive
-            val left = cw * runStart + (if (realStart) px else 0f)
-            val width = cw * (runEnd - runStart + 1) - (if (realStart) px else 0f) - (if (realEnd) 2 * px else 0f)
+            // T-107：BC2 の帯はセルの罫線ぎりぎりまで塗り、隣の帯との間は罫線1本分だけ（実測 ≈ 3px）。
+            // v0.1 は始端 1dp・終端 2dp 内側へ寄せていて、罫線と合わせて ≈ 9px の白い隙間が出ていた。
+            // 罫線は各セルの右端 1dp に引かれるので、帯の終端だけ 1dp 手前で止める（角丸は BC2 にも無いので付けない）。
+            val left = cw * runStart
+            val width = cw * (runEnd - runStart + 1) - (if (realEnd) px else 0f)
             val top = rowTop(seg.lane)
             val height = m.lineH - px
-            val t = measurer.fitOneLine(ev.title, BarText, width - 3 * px)
+            val t = measurer.fitOneLine(ev.title, BarText, width - 4 * px)
             val color = ev.baseColor
             bars += BarDraw(
                 left, top, width, height, color, textOnBar(color),
-                PlacedText(t, left + 2 * px, top + (height - t.size.height) / 2f),
+                PlacedText(t, left + 3 * px, top + (height - t.size.height) / 2f),   // 文字の左端は v0.1 と同じ位置（帯を 1dp 左へ広げた分だけ余白を足す）
             )
             c++
         }
@@ -443,7 +453,7 @@ private fun DrawScope.drawWeek(
         }
         val outside = YearMonth.from(d) != month && !isSel
         val num = if (d == today) r.dayNumBold[c] else r.dayNum[c]
-        drawText(num, color = if (outside) numColor.copy(alpha = 0.6f) else numColor, topLeft = Offset(cw * c + 4 * px, px))
+        drawText(num, color = if (outside) numColor.copy(alpha = 0.6f) else numColor, topLeft = Offset(cw * c + 4 * px, 2 * px))
         if (c == 0) {
             drawText(
                 r.weekNo, color = if (isSel) Color(0xFFBBBBBB) else WeekNoGray,

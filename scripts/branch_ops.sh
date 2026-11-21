@@ -108,9 +108,14 @@ last_date() { git log -1 --format=%cd --date=format-local:'%Y-%m-%d %H:%M %z' "$
 # 新しいコミットを作らない（rebase は既存コミットの付け替えで、元のコミットは commit: として残っている）ので数えない。
 # 記録の種類が分からないときは「自分のコミットが無い」側（＝未着手として保護）に倒れる。
 # reflog が無い・期限切れで消えた場合も未着手扱いになり、消さない（安全側）。
+# reflog はパイプで grep -q に流さず、いったん変数に最後まで読み込んでから調べる。grep -q は一致した時点で
+# 入力を閉じるため、長い reflog では git reflog が SIGPIPE（141）で終わり、pipefail によりパイプ全体が失敗して
+# 判定が反転する（自分のコミットが多い統合済みブランチが「未着手」になる）。この形ならその混入が起きない。
+REFLOG_COMMIT_RE='^(commit|commit \((amend|merge|initial)\)|cherry-pick|revert|am): |: Merge made by '
 is_untouched() {
-  ! git reflog show --format=%gs "refs/heads/$1" -- 2>/dev/null \
-    | grep -Eq '^(commit|commit \((amend|merge|initial)\)|cherry-pick|revert|am): |: Merge made by '
+  local log
+  log=$(git reflog show --format=%gs "refs/heads/$1" -- 2>/dev/null) || return 0   # 読めない＝未着手（安全側）
+  ! grep -Eq "$REFLOG_COMMIT_RE" <<<"$log"
 }
 
 # git branch -d が受け入れるか（upstream があれば upstream、無ければ HEAD にマージ済みか）。

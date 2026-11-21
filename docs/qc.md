@@ -147,3 +147,17 @@ JVM スクショテスト（Roborazzi + Robolectric、エミュレータなし�
   - 証拠ファイル: `work/branch_ops_demo_v2.log`（修正後）・`work/branch_ops_demo_v2_before.log`（修正前）（Git 管理外）
 - AI判定: 適合（指摘1〜3の対応と追加ケース a〜c を満たす）。再レビューは未実施
 - 人判定: 未実施
+
+### 2026-11-21 BO 再レビュー P2（長い reflog）の修正後の再実演（ブランチ claude/branch-ops）
+- 対象: 再レビュー記録 `work/branch_ops_rereview_codex.md`（5f3da7d に対し判定「不可」。指摘1・3は解消、指摘2の修正に P2 が残存）の P2 を修正したコミット（BO-8）。CI run はコミットメッセージと Muse への報告で参照
+- 入力・経路: Claude Code が実行。`work/branch_ops_demo_v3.sh <branch_ops.sh>`（v2 の手順にケース J を追加。毎回 `mktemp -d` の /tmp/bo-demo-v3-* に検証用クローン、リモート役はローカル bare、GitHub には触れない）を修正前（5f3da7d の版）と修正後で実行
+- 状態: 従来の A〜I に加えて — J 自分のコミット（空コミット）400 件を持ち main へ fast-forward 統合済み・clean な worktree・リモートあり（claude/demo-long）。reflog は 401 件。旧方式のパイプ（reflog | grep -Eq）を同じ reflog に対して実行すると PIPESTATUS=141 0（git reflog が SIGPIPE）を確認
+- 結果（修正前 5f3da7d の版）: P2 を再現。local J が「未着手 — 自分のコミットが無い」、remote J も「要掃除(保留) — 同名のローカルブランチが 未着手 のため」。prune 後もローカル・リモート・worktree とも残存
+- 結果（修正後）:
+  - J: audit でローカル・リモートとも「要掃除」。dry-run の削除予定に local J（＋worktree）と remote J。prune で worktree .worktrees/claude-demo-long・local claude/demo-long・remote origin/claude/demo-long を削除
+  - audit の「要掃除」7件（local A・I・J、remote A・I・J・E）と dry-run の削除予定7件が完全一致。実際の削除は local A・J、remote A・J・E の5件、残った I（local・remote）は故障注入による失敗として報告。「audit で要掃除でないのに消えたもの」0 件
+  - 既存ケース A〜I: v2 の修正後ログと比べ、J の行・件数・コミット ID 以外の差分なし（F・G・H・I・D の保護と I の失敗時 exit=1 は不変）
+  - 本リポジトリ: `scripts/branch_ops.sh audit --no-fetch` は claude/branch-ops（local・remote）が「作業中 — 未統合」、結果クリーン、終了コード 0。`bash -n` 成功
+  - 証拠ファイル: `work/branch_ops_demo_v3.log`（修正後）・`work/branch_ops_demo_v3_before.log`（修正前）（Git 管理外）
+- AI判定: 適合（BO-8 の完了条件を満たす）。再レビューは未実施
+- 人判定: 未実施

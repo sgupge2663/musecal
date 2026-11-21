@@ -27,6 +27,12 @@
     - 指摘3（中）: AGENTS.md「ブランチ運用」に「削除の方法」を分けて書き、リモートは確認済み SHA に限定した `--force-with-lease` で消す条件付き削除であることを明記。保護対象に fast-forward のみのブランチ・branch -d が拒否する状態・実行時失敗を追記
   - 完了条件: 指摘1〜3の再現条件で、ローカル・リモートとも消えない。audit の「消せる」と prune の削除予定が一致する。AGENTS.md の記述が実装と一致する
   - 検証方法: `work/branch_ops_demo_v2.sh` を修正前・修正後で実行（`work/branch_ops_demo_v2_before.log` / `work/branch_ops_demo_v2.log`）。追加ケース (a) 未コミット変更ありの統合済みブランチ、(b) fast-forward のみのブランチ、(c) audit と prune の一致。要点は docs/qc.md の「Codex レビュー（不可）指摘3件の修正後の再実演」
+- [x] BO-8 Codex 再レビュー（5f3da7d、判定「不可」、work/branch_ops_rereview_codex.md）の P2 を直す
+  - 状態： 修正済み。再レビュー待ち。前回指摘1・3は再レビューで解消判定
+    - P2: is_untouched が `git reflog … | grep -Eq …` だったため、grep -q が一致で入力を閉じると長い reflog の git reflog が SIGPIPE（141）で終わり、pipefail でパイプ全体が失敗 → 先頭の `!` で「未着手」に反転していた。reflog を変数に最後まで読み込んでから here-string で grep する形に変更（reflog が読めないときは従来どおり未着手＝保護側）
+    - 同じパターンの点検: branch_ops.sh の他のパイプ（usage の sed、主作業ツリーの sed -n、for-each-ref | grep -v | sort、dispw の wc）はどれも入力を最後まで読み、終了コードを判定に使っていないため対象外
+  - 完了条件: 自分のコミットを数百件持つ統合済みブランチが「未着手」にならず、ローカル・リモートとも削除対象として扱われる。既存ケース A〜I の結果は変わらない
+  - 検証方法: `work/branch_ops_demo_v3.sh`（v2 ＋ ケース J: 空コミット 400 件・FF 統合済み・worktree・リモートあり）を修正前（5f3da7d の版）と修正後で実行（`work/branch_ops_demo_v3_before.log` / `work/branch_ops_demo_v3.log`）。要点は docs/qc.md の「再レビュー P2（長い reflog）の修正後の再実演」
 - [ ] BO-6 レビューと実運用での確認（著者≠検査役）
   - 状態： 未着手。Codex のレビューと、Muse が次の実際の統合で「統合 → prune → audit クリーン」を1回通すこと
   - 完了条件: レビュー記録が work/ にあり重大指摘が解消している。実際の統合後に audit がクリーン

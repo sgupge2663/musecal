@@ -89,6 +89,31 @@ fun googleEventToCalEvent(o: JSONObject, calendar: CalendarTab, zone: ZoneId): C
     }
 }
 
+/**
+ * 月表示のスクロール停止の検出（V1-3 Codex レビュー指摘3）。
+ *
+ * スクロールが止まるたびに、表示中の週が前回と同じでも必ず1回知らせる（取得に失敗したウィンドウを、
+ * 同じ範囲での次のスクロール停止で取り直せるように）。スクロール中は知らせない。
+ * スクロールせずに状態が再評価されただけ（同じ週・停止のまま）のときは知らせない。
+ */
+class ScrollStopDetector {
+    private var wasScrolling = true
+    private var last: List<Int>? = null
+
+    /** 状態を渡す。知らせるべきときだけ表示中の週の番号を返す。 */
+    fun onState(scrolling: Boolean, visibleIndices: List<Int>): List<Int>? {
+        if (scrolling) {
+            wasScrolling = true
+            return null
+        }
+        if (visibleIndices.isEmpty()) return null
+        val emit = wasScrolling || visibleIndices != last
+        wasScrolling = false
+        last = visibleIndices
+        return if (emit) visibleIndices else null
+    }
+}
+
 /** events.list の1ページ分の JSON を読む。 */
 fun parseEventsPage(json: String, calendar: CalendarTab, zone: ZoneId): Pair<List<CalEvent>, String?> {
     val o = JSONObject(json)
@@ -117,10 +142,7 @@ object EventsApi {
     ): List<CalEvent> = withContext(Dispatchers.IO) {
         val timeMin = window.start.atStartOfDay(zone).toOffsetDateTime().format(RFC3339)
         val timeMax = window.endExclusive.atStartOfDay(zone).toOffsetDateTime().format(RFC3339)
-        val all = mutableListOf<CalEvent>()
-        var pageToken: String? = null
-        var pages = 0
-        do {
+        fetchAllPages { pageToken ->
             val url = buildString {
                 append(BASE).append(pathSegment(calendar.calendarId)).append("/events")
                 append("?singleEvents=true&orderBy=startTime&maxResults=2500")
@@ -129,11 +151,37 @@ object EventsApi {
                 append("&fields=").append(enc(FIELDS))
                 pageToken?.let { append("&pageToken=").append(enc(it)) }
             }
-            val (events, next) = parseEventsPage(get(url, accessToken), calendar, zone)
-            all += events
+            parseEventsPage(get(url, accessToken), calendar, zone)
+        }
+    }
+
+    /** 安全上限。1ページ最大2500件なので、6週分でここに届くのは API の異常（同じトークンの繰り返し等）とみなす。 */
+    const val MAX_PAGES = 50
+
+    class IncompleteError(message: String) : IOException(message)
+
+    /**
+     * nextPageToken が無くなるまで全ページを取る（V1-3 Codex レビュー指摘1）。
+     * [maxPages] に届いてもまだ nextPageToken が残っている場合や、同じ nextPageToken が繰り返された場合は
+     * 部分結果を返さず [IncompleteError] で失敗にする（不完全なウィンドウを取得済みとして保存しないため）。
+     */
+    internal inline fun <T> fetchAllPages(
+        maxPages: Int = MAX_PAGES,
+        fetchPage: (pageToken: String?) -> Pair<List<T>, String?>,
+    ): List<T> {
+        val all = mutableListOf<T>()
+        val seen = HashSet<String>()
+        var pageToken: String? = null
+        var pages = 0
+        while (true) {
+            val (items, next) = fetchPage(pageToken)
+            all += items
+            pages++
+            if (next == null) return all
+            if (!seen.add(next)) throw IncompleteError("予定の取得が完了しませんでした（同じページが繰り返されました）")
+            if (pages >= maxPages) throw IncompleteError("予定の取得が完了しませんでした（${maxPages}ページを超えました）")
             pageToken = next
-        } while (pageToken != null && ++pages < 50)
-        all
+        }
     }
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
@@ -163,8 +211,11 @@ object EventsApi {
 /**
  * 取得した予定の在メモリ保持（アカウント・タブの組ごと。変わったら [reset]）。
  *
- * ウィンドウは重なりうる（はみ出した週から6週を取るため）。同じ予定（calendarId＋eventId）が複数のウィンドウに
- * あるときは、後から取得したウィンドウのものを使う。UI スレッドからだけ呼ぶ前提。
+ * ウィンドウは重なりうる（はみ出した週から6週を取るため）。[put] に渡すのは、そのウィンドウについて
+ * 全カレンダー・全ページが揃った完全な応答だけ。完全な応答はそのウィンドウの範囲について正なので、
+ * 以前に取った他のウィンドウの予定のうち、新しいウィンドウの範囲にかかるものは捨てる（V1-3 Codex レビュー指摘2:
+ * 削除・移動された予定が古いウィンドウから残り続けないように）。範囲にかかる予定は API が必ず返すので、
+ * まだ存在するものは新しい応答の側に入っている。UI スレッドからだけ呼ぶ前提。
  */
 class EventWindowStore {
     private val loaded = LinkedHashMap<LocalDate, List<CalEvent>>()
@@ -193,8 +244,14 @@ class EventWindowStore {
     fun put(w: EventWindow, events: List<CalEvent>) {
         inFlight -= w.start
         loaded.remove(w.start)
+        for (key in loaded.keys.toList()) {
+            loaded[key] = loaded.getValue(key).filterNot { it.overlaps(w) }
+        }
         loaded[w.start] = events // 末尾 = 最新
     }
+
+    /** 予定の表示日がウィンドウ [start, endExclusive) にかかるか（events.list の timeMin/timeMax と同じ境界）。 */
+    private fun CalEvent.overlaps(w: EventWindow): Boolean = startDate < w.endExclusive && endDateInclusive >= w.start
 
     /** 全ウィンドウを合わせた予定（重複は最新のウィンドウのものを残す）。 */
     fun merged(): List<CalEvent> {

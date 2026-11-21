@@ -12,8 +12,9 @@ import java.time.ZoneId
  *
  * 環境変数 MUSECAL_REAL_EVENTS_DIR に events.list の実レスポンス（main.json / mokuyou.json / holiday.json。
  * `hatch_gws_cli calendar events list` の出力）を置いたフォルダを指定すると、アプリの変換結果を
- * 1予定1行の TSV（カレンダー、開始日、終了日、終日/時間、開始時刻、タイトル、帯の色）で
- * そのフォルダの app_summary.tsv に書き出す。独立に作った期待値と diff して照合する。
+ * 1予定1行の TSV（カレンダー、開始日、表示上の終了日、終日/時間、開始時刻、終了時刻、タイトル、帯の色）で
+ * そのフォルダの app_summary.tsv に書き出す。独立に作った期待値（work/v13/make_expected.py）と diff して照合する。
+ * 描画結果（帯/時間指定の配置・文字色）は含まない（それはスクショと実機照合の範囲）。
  * 実データは個人の予定なので、リポジトリには置かない（work/ など Git 管理外に置く）。
  */
 class RealEventsDumpTest {
@@ -31,7 +32,7 @@ class RealEventsDumpTest {
             parseEventsPage(File(dir, "$file.json").readText(), tab, zone).first.map { e ->
                 listOf(
                     tab.label, e.startDate, e.endDateInclusive, if (e.allDay) "終日" else "時間",
-                    e.start?.toLocalTime() ?: "", e.title,
+                    e.start?.toLocalTime() ?: "", e.end?.toLocalTime() ?: "", e.title,
                     "#%06x".format(e.baseColor.toArgb() and 0xFFFFFF),
                 ).joinToString("\t")
             }

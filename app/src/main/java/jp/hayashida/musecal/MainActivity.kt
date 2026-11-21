@@ -101,8 +101,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.Duration
@@ -230,7 +228,9 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     // 今のアカウントの札（予定の取得もこの札で結果を判定する）。サインアウトで null。
     var activeTicket by remember { mutableStateOf<AccountRequestGate.Ticket?>(null) }
     // 月表示が今見ている週（各週の日曜）。スクロールが止まるたびに MuseCalApp から届く。
+    // 同じ週での再停止でも取得判定をやり直すよう、停止ごとに番号を進める（失敗したウィンドウの取り直し）。
     var visibleWeeks by remember { mutableStateOf<List<LocalDate>>(emptyList()) }
+    var scrollStopSeq by remember { mutableStateOf(0L) }
 
     fun fetchEventWindow(ticket: AccountRequestGate.Ticket, tabsSnapshot: List<CalendarTab>, window: EventWindow) {
         val gen = store.generation
@@ -336,7 +336,7 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     // V1-3: アカウントかタブが変わったら予定を捨てて取り直す。表示中の週が取得済み・取得中の範囲から
     // はみ出したら、はみ出した最初の週から6週分を取る（1回のスクロールで足りない分は続けて取る）。
     val storeKey = remember { arrayOfNulls<Any>(1) }
-    LaunchedEffect(activeTicket, tabs, visibleWeeks) {
+    LaunchedEffect(activeTicket, tabs, visibleWeeks, scrollStopSeq) {
         val key = activeTicket to tabs
         if (storeKey[0] != key) {
             storeKey[0] = key
@@ -358,7 +358,7 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
             accountEmail = current.email,
             onSignOut = { scope.launch { auth.signOut() } },
             tabs = tabs,
-            onVisibleWeeksChange = { visibleWeeks = it },
+            onVisibleWeeksChange = { visibleWeeks = it; scrollStopSeq++ },
         )
     }
 }
@@ -451,7 +451,7 @@ fun MuseCalApp(
     onSignOut: () -> Unit,
     /** V1-2: calendarList から対応づけた下部タブ（[mapCalendarTabs]）。 */
     tabs: List<CalendarTab>,
-    /** V1-3: スクロールが止まるたびに、表示中の週（各週の日曜）を知らせる。予定の取得範囲の判定に使う。 */
+    /** V1-3: スクロールが止まるたびに（同じ週でも）、表示中の週（各週の日曜）を知らせる。予定の取得範囲の判定に使う。 */
     onVisibleWeeksChange: (List<LocalDate>) -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -477,14 +477,13 @@ fun MuseCalApp(
     }
     val visibleWeeksCallback by rememberUpdatedState(onVisibleWeeksChange)
     LaunchedEffect(listState) {
-        // スクロール中は送らない（フリングや月送りのアニメーションの途中の週で取得を始めないため）
-        snapshotFlow {
-            if (listState.isScrollInProgress) null
-            else listState.layoutInfo.visibleItemsInfo.map { it.index }.takeIf { it.isNotEmpty() }
-        }
-            .filterNotNull()
-            .distinctUntilChanged()
-            .collect { idx -> visibleWeeksCallback(idx.map(::weekStartOf)) }
+        // スクロール中は送らない（フリングや月送りのアニメーションの途中の週で取得を始めないため）。
+        // 止まるたびに送る（同じ週でも。判定は ScrollStopDetector）
+        val detector = ScrollStopDetector()
+        snapshotFlow { listState.isScrollInProgress to listState.layoutInfo.visibleItemsInfo.map { it.index } }
+            .collect { (scrolling, idx) ->
+                detector.onState(scrolling, idx)?.let { visibleWeeksCallback(it.map(::weekStartOf)) }
+            }
     }
     fun scrollToMonth(m: YearMonth) {
         scope.launch { listState.animateScrollToItem(weekIndexOf(m.atDay(1))) }

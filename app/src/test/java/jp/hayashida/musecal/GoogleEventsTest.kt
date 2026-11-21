@@ -207,4 +207,101 @@ class GoogleEventsTest {
         store.put(EventWindow(nov29.plusWeeks(8)), listOf(first[0].copy(calendarId = mokuyouTab.calendarId)))
         assertEquals(7, store.merged().size)
     }
+
+    // ---------- Codex レビュー（e369ce3）指摘への対応 ----------
+
+    @Test
+    fun allPagesAreFetchedUntilNoNextPageToken() {
+        val pages = mapOf(null to (listOf(1, 2) to "t1"), "t1" to (listOf(3) to "t2"), "t2" to (listOf(4) to null))
+        val requested = mutableListOf<String?>()
+        val all = EventsApi.fetchAllPages<Int> { token -> requested += token; pages.getValue(token) }
+        assertEquals(listOf(1, 2, 3, 4), all)
+        assertEquals(listOf(null, "t1", "t2"), requested)
+    }
+
+    @Test
+    fun reachingPageLimitWithTokenLeftFailsInsteadOfReturningPartialResult() {
+        // 指摘1: 上限に届いても nextPageToken が残っていれば失敗（部分結果を成功にしない）
+        var calls = 0
+        val e = runCatching {
+            EventsApi.fetchAllPages<Int>(maxPages = 3) { _ -> calls++; listOf(calls) to "t$calls" }
+        }.exceptionOrNull()
+        assertTrue(e is EventsApi.IncompleteError)
+        assertEquals(3, calls)
+        // ちょうど上限ページで終わるなら成功
+        var n = 0
+        val ok = EventsApi.fetchAllPages<Int>(maxPages = 3) { _ -> n++; listOf(n) to (if (n < 3) "t$n" else null) }
+        assertEquals(listOf(1, 2, 3), ok)
+    }
+
+    @Test
+    fun repeatedPageTokenFails() {
+        val e = runCatching { EventsApi.fetchAllPages<Int> { _ -> listOf(0) to "same" } }.exceptionOrNull()
+        assertTrue(e is EventsApi.IncompleteError)
+    }
+
+    @Test
+    fun refetchOfOverlappingWindowRemovesEventsThatNoLongerExist() {
+        // 指摘2: 11/29 開始の窓で 12/10 の予定を取得 → 11/22 開始の窓（〜1/2）を再取得したら削除済みで返らない → 消える
+        val store = EventWindowStore()
+        val dec10 = byId(page1().first, "notitle0005") // 12/10
+        val dec30 = byId(page1().first, "alldayrange0004") // 12/30〜1/2（新しい窓 11/22〜1/2 にかかる）
+        val jan5 = dec10.copy(eventId = "jan5", startDate = LocalDate.of(2027, 1, 5), endDateInclusive = LocalDate.of(2027, 1, 5),
+            start = dec10.start!!.withMonth(1).withYear(2027).withDayOfMonth(5), end = dec10.end!!.withMonth(1).withYear(2027).withDayOfMonth(5))
+        store.put(EventWindow(nov29), listOf(dec10, dec30, jan5))
+        val nov22 = nov29.minusWeeks(1)
+        assertEquals(LocalDate.of(2027, 1, 3), EventWindow(nov22).endExclusive)
+        store.put(EventWindow(nov22), listOf(dec30))
+        val merged = store.merged()
+        assertEquals(listOf("alldayrange0004", "jan5"), merged.mapNotNull { it.eventId }.sorted())
+        // 新しい窓の範囲外（1/5）の予定は古い窓の分として残る
+        assertEquals(1, merged.count { it.eventId == "alldayrange0004" })
+    }
+
+    @Test
+    fun movedEventDoesNotRemainAtOldDate() {
+        val store = EventWindowStore()
+        val e = byId(page1().first, "alldaysingle0003") // 12/16
+        store.put(EventWindow(nov29), listOf(e))
+        val moved = e.copy(startDate = LocalDate.of(2026, 12, 18), endDateInclusive = LocalDate.of(2026, 12, 18))
+        store.put(EventWindow(nov29.plusWeeks(2)), listOf(moved)) // 12/13〜1/23
+        assertEquals(listOf(LocalDate.of(2026, 12, 18)), store.merged().map { it.startDate })
+    }
+
+    @Test
+    fun failedWindowIsRefetchedOnNextScrollStopAtSameWeeks() {
+        // 指摘3: 失敗 → 同じ週のままスクロールが止まり直したら、再び取得対象になる
+        val detector = ScrollStopDetector()
+        val store = EventWindowStore()
+        val idx = listOf(100, 101, 102, 103, 104, 105)
+        val visible = weeks(nov29, 6)
+
+        // 初回表示（停止状態）で知らせる → 取得開始
+        assertEquals(idx, detector.onState(false, idx))
+        val w = windowToFetch(visible, store.coveredWeeks())!!
+        store.markInFlight(w)
+        // 再評価されただけ（スクロールしていない）では知らせない
+        assertNull(detector.onState(false, idx))
+        // 取得失敗
+        store.fail(w)
+        // ユーザーが少しスクロールして同じ週で止まる
+        assertNull(detector.onState(true, idx))
+        assertEquals(idx, detector.onState(false, idx))
+        assertEquals(w, windowToFetch(visible, store.coveredWeeks()))
+        // 成功後は同じ週で止まっても取り直さない
+        store.put(w, emptyList())
+        assertNull(detector.onState(true, idx))
+        assertEquals(idx, detector.onState(false, idx))
+        assertNull(windowToFetch(visible, store.coveredWeeks()))
+    }
+
+    @Test
+    fun scrollStopDetectorIgnoresWhileScrollingAndEmptyLayout() {
+        val d = ScrollStopDetector()
+        assertNull(d.onState(false, emptyList()))
+        assertNull(d.onState(true, listOf(1, 2)))
+        assertEquals(listOf(2, 3), d.onState(false, listOf(2, 3)))
+        // 停止のまま週が変わった（animateScrollToItem 直後等）なら知らせる
+        assertEquals(listOf(5, 6), d.onState(false, listOf(5, 6)))
+    }
 }

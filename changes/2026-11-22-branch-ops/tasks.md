@@ -1,0 +1,26 @@
+# tasks: branch-ops
+
+- [x] BO-1 AGENTS.md に「ブランチ運用」節を新設し、正本を1か所にする
+  - 状態： 実装済み（ブランチ `claude/branch-ops`、worktree `.worktrees/claude-branch-ops`）。命名・統合・統合後・節目はタグ・統合手順（統合 → prune → audit）・prune が触らないもの を記載。原則8 は参照に縮め、README も参照先を変更
+  - 完了条件: 命名・統合・統合後の削除・タグでの記録・統合手順が AGENTS.md の1節にあり、他の文書は重複せず参照している
+  - 検証方法: `grep -rn "原則8" .`（reference/ と changes/ 以外）が 0 件。README の記述が節を指している
+- [x] BO-2 `scripts/branch_ops.sh audit` を実装する
+  - 状態： 実装済み。本リポジトリで実行し、main のみのクリーンな状態を表示（作業中の本ブランチは「未着手」として表示）。証拠は docs/qc.md の BO 実施記録
+  - 完了条件: ローカル＋リモートの全ブランチについて、統合済みか・最終コミット日・対応 worktree・判定が出る。統合済みで残るブランチは「要掃除」と出る
+  - 検証方法: 本リポジトリと検証用クローンでの実行出力
+- [x] BO-3 `scripts/branch_ops.sh prune [--dry-run]` を実装する
+  - 状態： 実装済み。検証用クローン（work/branch-ops-demo、リモート役はローカル bare）で、統合済み＋worktree のブランチと統合済みのリモートだけのブランチが消え、未統合・未着手・未コミット変更ありの worktree・main が残ることを実演。dry-run では何も消えないことも確認
+  - 完了条件: 統合済みのブランチだけがローカル＋リモートから消え、対応 worktree は変更が無い場合だけ外れる。main・未統合・使用中/変更ありの worktree は対象外として報告される。force 削除を使わない
+  - 検証方法: work/branch_ops_demo.sh の実行ログ（work/branch_ops_demo.log）。要点は docs/qc.md に転記
+- [x] BO-4 pre-push を、ブランチ削除だけの push では check.sh を省略するように直す
+  - 状態： 実装済み。削除のみ→省略（exit 0）、コードを送る push→従来どおり check.sh を要求、の両方を確認
+  - 完了条件: 削除のみの push で Gradle が走らず、コードを送る push の gate は不変
+  - 検証方法: hook に標準入力を与えた実行結果（docs/qc.md）
+- [ ] BO-5 check.sh とブランチ CI（Build APK）を通す
+  - 状態： docs/qc.md の BO 実施記録を参照（push 後に追記）
+  - 完了条件: `scripts/check.sh` 成功、ブランチ push の Build APK run が success
+  - 検証方法: check.sh の出力、`gh run list --branch claude/branch-ops`
+- [ ] BO-6 レビューと実運用での確認（著者≠検査役）
+  - 状態： 未着手。Codex のレビューと、Muse が次の実際の統合で「統合 → prune → audit クリーン」を1回通すこと
+  - 完了条件: レビュー記録が work/ にあり重大指摘が解消している。実際の統合後に audit がクリーン
+  - 検証方法: レビュー記録、統合時の audit 出力

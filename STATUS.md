@@ -9,7 +9,7 @@
 
 ## Must（次にやる）
 - V1-3: Google Calendar API（calendar.readonly、トークンは端末内のみ）で実データを表示する
-- ブランチ運用の仕組み化: AGENTS.md への正本化＋scripts/branch_ops.sh（audit / prune）＋統合手順への組み込み（2026-11-21 の説明画像の Codex 監査で「規約文書に定めがない」と指摘された件）
+- ブランチ運用の仕組み化: 実装済み・統合待ち（ブランチ claude/branch-ops、changes/2026-11-22-branch-ops/。残りは Codex レビューと、実際の統合で「統合 → prune → audit」を1回通すこと）
 - ユーザーの実機判定の残り（スクロールの滑らかさ QC-06 は静止画で判定できず未受領。帯文字 11sp は「見やすい」に含まれるとみなし、明示の異議があれば再開）
 
 ## Should

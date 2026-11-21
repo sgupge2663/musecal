@@ -11,9 +11,21 @@
 5. **完了は証拠つきでのみ受理**： 「できました」ではなく、ビルド結果・実行出力・スクリーンショット等の証拠で確認する。確認できない項目は「未確認」と明記する。繰り返し確認する項目は `docs/qc.md` の固定ケース＋実施記録に残す。UI 変更の受理には変更後のスクリーンショット（可能なら変更前との比較）とユーザーの判定が要る。未取得なら「受理待ち」とする。
 6. **判断は人間に残す**： 仕様の追加・変更、優先順位、最終的な見た目の判定はユーザー（林田）が決める。エージェントは勝手にタスクを増やさない。
 7. **UI だけでなく UX**： 見た目の再現だけでなく、操作感（スクロールの滑らかさ、タップ応答、遷移の自然さ）も仕様とタスクの対象にする。「動く」ではなく「気持ちよく動く」を完了条件に含める。
-8. **作業分離**： 1タスク = 1 worktree = 1ブランチ。worktree は `.worktrees/<agent>-<slug>`、ブランチは `claude/<slug>` / `codex/<slug>`。main への統合と push は Muse が行い、統合前にそのブランチのコミットで CI（Build APK）が成功していることを確かめる。他人のツリーで直接作業しない。
-9. **強制は文章でなく仕組みで**： `.githooks/pre-commit` が秘密情報を止め、`pre-push` が `scripts/check.sh`（assembleDebug）を回す。clone したら `git config core.hooksPath .githooks` を設定する。チェックを飛ばす場合は SKIP_CHECK=1 と明示し、理由を報告に残す。SDK 等の環境が無いマシンでは無理に通さず、CI を gate の正とする（その旨を報告に残す）。
+8. **作業分離**： 1タスク = 1 worktree = 1ブランチ。他人のツリーで直接作業しない。命名・統合・統合後の片づけは下の「ブランチ運用」が正本。
+9. **強制は文章でなく仕組みで**： `.githooks/pre-commit` が秘密情報を止め、`pre-push` が `scripts/check.sh`（assembleDebug）を回す（ブランチ削除だけの push は省略）。clone したら `git config core.hooksPath .githooks` を設定する。チェックを飛ばす場合は SKIP_CHECK=1 と明示し、理由を報告に残す。SDK 等の環境が無いマシンでは無理に通さず、CI を gate の正とする（その旨を報告に残す）。
 10. **公開リポジトリ前提のセキュリティ**（2026-11-21 ユーザー指示）： 本リポジトリは public。公開済みの予定サンプルデータはユーザーが許容したが、それ以外の秘密情報・鍵・個人情報は commit しない。防御は二重にする： ローカルの pre-commit に加え、GitHub 側の secret scanning と push protection を有効に保つ。Secrets の追加、CI の権限拡大、新しい外部サービスの接続は、Muse が内容を確認し、ユーザーへ報告してから行う。
+
+## ブランチ運用（正本。担保は `scripts/branch_ops.sh`）
+- **命名**： 作業ブランチは `claude/<slug>` / `codex/<slug>`。worktree は `.worktrees/<agent>-<slug>` に作り、同じ `<slug>` でブランチと1対1に対応づける（例： `claude/branch-ops` ↔ `.worktrees/claude-branch-ops`）。
+- **統合**： main への統合と main の push は Muse だけが行う。統合の前に、そのブランチの最終コミットで CI（Build APK）が成功していることを確かめる。統合は fast-forward か merge で行う（squash・rebase で統合すると、ブランチの先端が main に含まれず `prune` が統合済みと判定できない）。
+- **統合後**： 統合したブランチは、ローカル・リモートとも削除し、対応する worktree も外す。残してよいのは未統合の作業ブランチだけ。手作業の台帳は作らない（状態は `scripts/branch_ops.sh audit` が git から毎回求める）。
+- **節目の記録**： 版や節目を残したいときはブランチでなくタグで残す。経緯の正本は git 履歴と `changes/` の収束記録で、ブランチは記録に使わない。
+- **統合手順**（Muse。main を checkout した主作業ツリーで行う）：
+  1. ブランチの最終コミットで CI（Build APK）が成功していることを確認する
+  2. main へ統合（fast-forward か merge）し、main を push する
+  3. `scripts/branch_ops.sh prune --dry-run` で削除対象を確かめ、`scripts/branch_ops.sh prune` で統合済みのブランチ（ローカル＋リモート）と worktree を片づける
+  4. `scripts/branch_ops.sh audit` が「クリーン」（終了コード 0）になることを確かめる。「保留」が出たら、その worktree の変更・使用状況を確かめてから片づける
+- **prune が触らないもの**： main、未統合のブランチ、自分のコミットがまだ無い作りたてのブランチ、使用中（実行中・主作業ツリー・lock 中）や未コミット変更ありの worktree、それらと同名のリモートブランチ。削除は `git branch -d` と `git worktree remove`（force なし）だけで行う。
 
 ## ファイルの役割
 - `REQUIREMENTS.md` … 仕様の正本（What / Why）。実測値もここに記録する

@@ -116,3 +116,17 @@ JVM スクショテスト（Roborazzi + Robolectric、エミュレータなし�
 - 未確認: 実機での calendarList 取得（実 API 呼び出し）と、各タブにそのカレンダーの予定だけが出ること（V1-2 完了条件。V1-3 後）
 - レビュー条件対応（2026-11-21、Codex 条件1）: 取得要求をアカウントに紐づけ、今のアカウントと一致しない結果を捨てる `AccountRequestGate` を追加。固定ケース「取得中にサインアウト→別アカウントへサインイン」を `AccountRequestGateTest` で再現（遅れて返った前アカウントの結果は、新アカウントの結果の前後どちらで返っても反映されない）。結果: `scripts/check.sh` 成功（単体テスト 27件全通過、うち AccountRequestGateTest 6件）、`verifyRoborazziDebug` 一致（ベースライン変更なし）。UI 結合（実機でのサインアウト→別アカウント）は未確認
 - 条件2（実機証拠とユーザー判定）: 未確認のまま据え置き（V1-3 後の実データ版でまとめて行う）
+
+### 2026-11-21 BO ブランチ運用の仕組み化（ブランチ claude/branch-ops）
+- 対象: ブランチ `claude/branch-ops`（main ed88928 から分岐）。`scripts/branch_ops.sh`・`.githooks/pre-push`・AGENTS.md「ブランチ運用」節。CI run はコミットメッセージと Muse への報告で参照
+- 入力・経路: Claude Code が実行。(a) 本リポジトリで `scripts/branch_ops.sh audit`。(b) 検証用クローン（`work/branch-ops-demo/`。リモート役はローカルの bare リポジトリで、GitHub には触れない）を `work/branch_ops_demo.sh` で作り、audit → prune --dry-run → prune → audit
+- 状態: (b) のクローンに用意したブランチ — A 統合済み＋worktree＋リモート（claude/demo-merged）、B 未統合＋worktree＋リモート（claude/demo-unmerged）、C 統合済みだが worktree に未コミット変更（codex/demo-dirty）、D 作りたて（コミット無し）をリモートにも push（claude/demo-fresh）、E 統合済みでリモートだけ（codex/demo-remote-only）
+- 結果:
+  - (a) 基準 origin/main (ed88928)。local main / remote origin/main が「main」、作業中の claude/branch-ops は「未着手」（コミット前に実行）。「結果: クリーン（統合済みなのに残っているブランチは 0 件）」、終了コード 0
+  - (b) 掃除前の audit: 「要掃除 5 件（prune で消せる: 3 件 / 保留: 2 件）」、終了コード 2。dry-run は削除予定に A（local＋worktree＋remote）と E だけを挙げ、実行後もブランチ一覧は不変。prune で worktree .worktrees/claude-demo-merged、local claude/demo-merged、remote claude/demo-merged、remote codex/demo-remote-only を削除。bare 側に残ったのは main・claude/demo-unmerged・claude/demo-fresh。C の未コミットファイル wip.txt は残存。掃除後の audit は「消せる 0 件 / 保留 2 件」（C と、D のリモート）
+  - 追加確認: main 以外の worktree から prune すると、git branch -d が拒否する状態のブランチは worktree も外さずに対象外として報告し、主作業ツリーから実行すると消えた
+  - pre-push: 削除のみの入力 → 「ブランチ削除のみのためチェックを省略」exit 0。コードを送る入力（check.sh の無い場所）→ 従来どおり停止 exit 1
+  - 証拠ファイル: `work/branch_ops_demo.log`・`work/branch_ops_audit_real.log`（Git 管理外。再現は `bash work/branch_ops_demo.sh <scripts/branch_ops.sh の絶対パス>`）
+- AI判定: 適合（完了条件 BO-2〜BO-4 を満たす）。実演の途中で「作りたてのローカルブランチと同名のリモートブランチが消える対象になる」欠陥を見つけて修正済み（同名ローカルが守られていればリモートも守る）
+- 人判定: 未実施
+- 理想 / 対策: 実際の統合で Muse が「統合 → prune → audit クリーン」を通して初めて運用として成立する（BO-6）

@@ -3,6 +3,7 @@ toolchain/
 scripts/*
 !scripts/check.sh
 !scripts/build_docs.sh
+!scripts/branch_ops.sh
 local.properties
 work/
 

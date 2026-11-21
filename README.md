@@ -12,7 +12,7 @@ Google カレンダーと直接同期し、Android 標準のカレンダー同�
 
 ## 開発環境（複数環境から触る前提）
 
-正本はこの GitHub リポジトリ。作業分離（worktree＋prefix ブランチ）と push・統合の担当は `AGENTS.md` 原則8 が正本。
+正本はこの GitHub リポジトリ。作業分離（worktree＋prefix ブランチ）、push・統合の担当、統合後の片づけは `AGENTS.md` の「ブランチ運用」が正本（点検と掃除は `scripts/branch_ops.sh audit` / `prune`）。
 
 ### VM（メイン開発環境： Muse / Claude Code / Codex）
 - 作業コピー: `~/workspace/calendar-app`

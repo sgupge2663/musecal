@@ -24,6 +24,22 @@
 - 結果（実測値や出力。証拠ファイルのパス）
 - AI判定 / 人判定（別々に） / 理想 / 対策
 
+## スクショテスト（EM-1）の運用手順
+
+JVM スクショテスト（Roborazzi + Robolectric、エミュレータなし）で主要画面の描画を固定する。Phase 1（案D）の仕組みであり、操作のテストではない（操作は Phase 2 の EM-2）。
+
+- 実装: `app/src/test/java/jp/hayashida/musecal/ScreenshotTest.kt`
+  - `month_view.png`: 月表示（サンプルデータ、2026年12月、「今日」は 2026-12-16 に固定）
+  - `day_popup_dec16.png`: 12月16日のセルを実際にタップして開いた日ポップアップ
+  - 前提は固定する： 画面 w360dp-h800dp-xxhdpi（1080x2400px）、タイムゾーン Asia/Tokyo、SDK 35
+- ベースラインの置き場: `app/src/test/screenshots/`（git 管理する。ここが正本）
+- 検証（通常運用）: `scripts/check.sh` と CI の `testDebugUnitTest` が verify モードで比較し、差分があればテスト失敗になる。失敗時は `app/build/outputs/roborazzi/` に `<名前>_actual.png`（今回の描画）と `<名前>_compare.png`（Reference/Diff/New の比較画像）が出るので、まずそれを見て「意図した変更か、崩れか」を判定する
+- ベースラインの更新（意図した見た目の変更のときだけ）:
+  1. `./gradlew recordRoborazziDebug` を実行する
+  2. `app/src/test/screenshots/` の差分を目視確認してから、コード変更と一緒に commit する
+  3. 意図しない差分でベースラインを更新して誤魔化さない。崩れは実装側を直す
+- 注意: Roborazzi はプロパティ未指定だとキャプチャ自体が無効になるため、`app/build.gradle.kts` で通常実行時は `roborazzi.test.verify=true` を既定にしている（record / compare 実行時はそちらが優先）。この設定を消すと検証が静かに無効化されるので消さないこと
+
 ## 実施記録
 
 ### 2026-11-21 v0（commit 0cd52b5 以前〜v0 配布時点）
@@ -54,3 +70,12 @@
 - 結果: 旧 readableOn（コントラスト比 3.2 に届くまで黒/白へ lerp し、色相が動き淡くなりがち）を廃し、textShade に置換。定義は HSL で色相・彩度を保持し、明るい背景では L' = L × 0.72、暗い背景（選択セルの黒）では対称に L' = 1 − (1 − L) × 0.72。代表色の変換は単体テスト TextShadeTest（6件）で固定し全通過： #DC2127→#9E181C、#FBD75B→#F0BC06、#FFB878→#FF810F、#5484ED→#1651D1（いずれも白背景）、#FBD75B→#FCE289（黒背景）。`assembleDebug testDebugUnitTest` 成功（lintDebug は VM の中継 TLS 問題のためローカル未実施、CI が gate）
 - AI判定 / 人判定: AI判定=実装済み（証拠つき） / 人判定=適合（2026-11-21 ユーザー実機判定「いいねみやすい」。月表示と日ポップアップの実機スクショが証拠。係数 0.72 のままで確定）
 - 理想 / 対策: 実機で「鮮やか・濃い」と感じられること。人判定で不足なら係数 0.72 を調整する → 適合のため調整なし
+
+### 2026-11-21 EM-1 スクショテスト基盤（ブランチ claude/em1-screenshot-tests）
+- 経路: Claude Code 実装（changes/2026-11-21-emulator-verification の EM-1）。Roborazzi 1.30.1 + Robolectric 4.14.1 を選定（理由: tasks.md の指定が Roborazzi であり、Robolectric のネイティブ描画なら Canvas/drawBehind の実描画がそのまま PNG になり、日セルへの実タップでポップアップも開けるため）
+- 入力・経路: 月表示（2026年12月・サンプル37件・「今日」= 2026-12-16 固定）と、12月16日セルをタップして開く日ポップアップを JVM 上で描画
+- 状態: w360dp-h800dp-xxhdpi（1080x2400px）、Asia/Tokyo、SDK 35、フォント倍率 1.0
+- 結果: ベースライン2枚を `app/src/test/screenshots/` に生成し目視確認した（月表示は QC-01/02/03 の構造どおり、日ポップアップは「3 予定」＋見出しアイコン3つ＋予定3件）。record を2回実行しても同一ハッシュで決定的。`assembleDebug testDebugUnitTest lintDebug` 全通過（ScreenshotTest 2件＋TextShadeTest 6件）
+- 差分検出の実証: 試験変更として MainActivity の TodayBg を #FFF4C2 → #00FF00 に変えて通常の `testDebugUnitTest` を実行 → monthView_dec2026 のみ FAILED（AssertionError: Roborazzi … is changed、差分率 1.61%、比較画像 `month_view_compare.png` で 16 日セルだけが差分として示された）。試験変更は戻し済みで、戻した後は全通過
+- AI判定 / 人判定: AI判定=適合（描画の固定と差分検出を証拠つきで確認） / 人判定=未実施（ベースラインの見た目自体は v0.3 で人判定済みの画面の固定であり、新規の見た目判定は不要と Muse が判断したらその旨を残す）
+- 理想 / 対策: 変更のたびに after スクショが自動で残り、崩れが gate で止まること。未ログイン案内画面は V1-1 統合後に追加する（EM-1 の残件）

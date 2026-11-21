@@ -2,6 +2,8 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    // EM-1: JVM スクショテスト（Roborazzi + Robolectric）
+    id("io.github.takahirom.roborazzi")
 }
 
 // 署名鍵の固定（タスクA）: 環境変数 MUSECAL_DEBUG_KEYSTORE が既存ファイルを指す場合のみ、
@@ -47,6 +49,36 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
+    testOptions {
+        unitTests {
+            // EM-1: Robolectric が assets（sample_events.json）とリソースを読むために必要
+            isIncludeAndroidResources = true
+            all {
+                // ネイティブ描画＋1080x2400 のビットマップを扱うためテスト JVM のヒープを広げる
+                it.maxHeapSize = "2g"
+                // Robolectric が実行時に android-all を取得する際、ビルド環境（サンドボックスの
+                // 中継プロキシ等）の JVM 設定をテスト JVM にも引き継ぐ。CI では未設定なので何も起きない
+                for (key in listOf(
+                    "http.proxyHost", "http.proxyPort", "https.proxyHost", "https.proxyPort",
+                    "javax.net.ssl.trustStore", "javax.net.ssl.trustStorePassword",
+                )) {
+                    System.getProperty(key)?.let { v -> it.systemProperty(key, v) }
+                }
+            }
+        }
+    }
+}
+
+// EM-1: Roborazzi はプロパティ未指定だとキャプチャが無効（検証されない）ため、
+// 通常のテスト実行（check.sh / CI の testDebugUnitTest）では verify を既定にする。
+// record / compare の各タスク実行時はそちらを優先する（プラグインがプロパティを設定する）。
+tasks.withType<Test>().configureEach {
+    val requested = gradle.startParameter.taskNames.joinToString(" ")
+    if (!requested.contains("record", ignoreCase = true) &&
+        !requested.contains("compare", ignoreCase = true)
+    ) {
+        systemProperty("roborazzi.test.verify", "true")
+    }
 }
 
 dependencies {
@@ -57,4 +89,12 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     testImplementation("junit:junit:4.13.2")
+    // EM-1: JVM スクショテスト（Roborazzi + Robolectric + Compose UI Test）
+    testImplementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    testImplementation("androidx.test.ext:junit:1.2.1")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.30.1")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.30.1")
 }

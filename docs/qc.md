@@ -100,3 +100,9 @@ JVM スクショテスト（Roborazzi + Robolectric、エミュレータなし�
 - verify 絞り込み（Codex 低指摘）: `app/build.gradle.kts` の verify 強制を、Roborazzi が実行される単体テストタスク（test&lt;Variant&gt;UnitTest）に限定し、強制を外す条件を「同じ variant の record / compare Roborazzi タスク（または集約タスク）が要求されたとき」だけに変更。実証: 絞り込み後も通常の `testDebugUnitTest` で試験変更（TodayBg #FFF4C2 → #00FF00）を与えると monthView_dec2026 が FAILED になり、`month_view_actual.png` / `month_view_compare.png` が出力されることを確認（試験変更は戻し済み）。recordRoborazziDebug も正常に記録できることを確認済み
 - 証拠: `recordRoborazziDebug` 成功（ベースライン3枚が決定）。`scripts/check.sh` とブランチ CI の結果は本記録の追記後に確定し、コミットメッセージと Muse への報告で参照する
 - AI判定 / 人判定: AI判定=EM-1 完了条件（3画面）を満たす / 人判定=対象外（新規の見た目変更ではなく、既存画面の固定追加のため）
+
+### 2026-11-21 v1 V1-1 実機検証（ユーザーの実機）
+- 経路: ユーザーが v0.4（main 1614531 のビルド）を実機にインストールし、スクショ5枚で報告
+- 結果: アカウント選択画面に本人のアカウントが表示され、kou1995yurin530@gmail.com を選択 → 「Google で確認されていません」警告（同意画面が Testing 状態のため想定どおり）を続行 → サインイン済みの月表示（メール帯＋サインアウトボタン）を確認。完了条件「実機で本人のアカウントでログインできる」を満たす
+- 未確認: 再起動後のログイン保持、サインアウトで案内画面に戻ること（明示確認なし。次回起動時に自然に確認される見込み）
+- AI判定 / 人判定: 人判定=ログイン成功（ユーザーの実機スクショが証拠）

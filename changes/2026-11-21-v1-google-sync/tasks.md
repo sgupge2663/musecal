@@ -1,11 +1,12 @@
 # v1 タスク（接頭辞 V1-）
 
-- [ ] V1-1 ログイン基盤
+- [x] V1-1 ログイン基盤 — 完了（2026-11-21）
   - 内容: Google Sign-In の導線（未ログイン時の案内画面＋ログインボタン）、ログイン状態の保持と表示、ログアウト
   - 完了条件: 実機で本人のアカウントでログインでき、再起動後もログイン状態が保たれる。権限は calendar.readonly のみ要求する
   - 検証方法: 実機スクショ＋ユーザーの確認。要求 scope はコードと同意画面で照合
   - 状態: 実装済み（ブランチ `claude/v11-signin`、worktree `.worktrees/claude-v11`）。方式は Credential Manager（GetGoogleIdOption）＋ AuthorizationClient。Codex レビューは条件付き受理可 → 条件対応済み: (1) テスト強化 — 要求 scope の集合を `CalendarAuth.REQUESTED_SCOPE_URIS` に集約し（認可要求は必ずこの一覧から組み立てる）、CalendarAuthTest がその一覧そのもの（AuthorizationClient へ渡す scope の集合。Scope オブジェクトへの変換は1対1のラップのみ）が calendar.readonly 1件のみであることを検証する（従来は scope 定数の文字列のみの検証だった）。(2) Web クライアント ID 実値差し替え済み — Google Cloud プロジェクト「musecal」の Web クライアント ID を `R.string.google_web_client_id` に設定（Android クライアントも作成済み）。`scripts/check.sh` 成功（assembleDebug / testDebugUnitTest / lintDebug、単体テスト 8件全通過）。**実機検証は未実施**（ユーザーの実機でログイン試行待ち）。完了条件の「実機でログインできる」「再起動後の保持」は実機で確認する
 
+  - 完了記録（2026-11-21）: main へ統合済み（1614531、ブランチ CI 成功を確認してから統合）。Codex レビュー条件対応済み。実機検証はユーザーの実機で 22:55 に確認（v0.4 をインストール → アカウント選択で kou1995yurin530@gmail.com を選択 → 未確認アプリ警告を続行 → サインイン済みの月表示にメール帯＋サインアウト表示。スクショ5枚が証拠）。再起動後の保持とサインアウト→案内画面への復帰は明示確認なし（未確認。次回起動時に自然に確認される）
 - [ ] V1-2 カレンダー一覧とタブ対応
   - 内容: calendarList 取得。既存タブ（メイン / AI木曜会 / 日本の祝日）を実カレンダーに対応づけ、タブの色線はカレンダー色を使う
   - 完了条件: 実機で3カレンダーが正しく切り替わり、各タブにそのカレンダーの予定だけが出る

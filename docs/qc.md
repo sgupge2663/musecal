@@ -79,3 +79,15 @@ JVM スクショテスト（Roborazzi + Robolectric、エミュレータなし�
 - 差分検出の実証: 試験変更として MainActivity の TodayBg を #FFF4C2 → #00FF00 に変えて通常の `testDebugUnitTest` を実行 → monthView_dec2026 のみ FAILED（AssertionError: Roborazzi … is changed、差分率 1.61%、比較画像 `month_view_compare.png` で 16 日セルだけが差分として示された）。試験変更は戻し済みで、戻した後は全通過
 - AI判定 / 人判定: AI判定=適合（描画の固定と差分検出を証拠つきで確認） / 人判定=未実施（ベースラインの見た目自体は v0.3 で人判定済みの画面の固定であり、新規の見た目判定は不要と Muse が判断したらその旨を残す）
 - 理想 / 対策: 変更のたびに after スクショが自動で残り、崩れが gate で止まること。未ログイン案内画面は V1-1 統合後に追加する（EM-1 の残件）
+### 2026-11-21 v1 V1-1 ログイン基盤（ブランチ claude/v11-signin）
+- 経路: Claude Code 実装（worktree .worktrees/claude-v11）。レビューは別エージェント（Codex）待ち
+- 内容: Credential Manager（GetGoogleIdOption）でサインイン状態を確立し、Calendar 認可は AuthorizationClient（scope は calendar.readonly のみ要求）に分離（CalendarAuth.kt が認証の窓口）。未サインイン時はサンプル予定を出さず案内画面のみ（V1-5 の未ログイン画面を兼ねる）。サインイン済みはヘッダー下の細い帯にメールアドレスとサインアウトを表示。月表示のデータはまだサンプル（実データ接続は V1-3）
+- 証拠: `scripts/check.sh` 成功（assembleDebug / testDebugUnitTest / lintDebug すべて OK）。単体テスト 7 件全通過（TextShadeTest 6 件＋CalendarAuthTest 1 件: scope 定数の文字列が読み取り専用であることを検証 ※実際の要求一覧そのものの検証は下記のレビュー条件対応で強化）
+- 環境メモ: ローカル lint が落ちていた既知問題は、toolchain/truststore.jks に中継プロキシの CA（Hatch Sandbox Egress CA）が含まれていなかったことが原因と判明し、CA を追加して解消した（リポジトリ外の環境修正）。あわせて応答しなくなっていた auth_relay_proxy を再起動した
+- AI判定 / 人判定: AI判定=実装済み（ビルド証拠つき） / 実機検証=**未実施**。Google Cloud 側の OAuth クライアント作成が未完了で、Credential Manager 用の Web クライアント ID（R.string.google_web_client_id）もプレースホルダのため、実機サインインはまだ成功しない。クライアント ID 設定後に「実機でログインできる・再起動後も保持される・サインアウトで案内画面に戻る」を確認する。固定ケース化は V1-6 で行う
+
+### 2026-11-21 v1 V1-1 レビュー条件対応（ブランチ claude/v11-signin）
+- 経路: Codex レビュー（条件付き受理可）の指摘1（中）への対応を Claude Code が実施
+- 内容: (1) CalendarAuthTest を強化。従来は scope 定数（CALENDAR_READONLY_SCOPE）の文字列しか検証しておらず、認可要求のリストに別 scope が混入しても通過する状態だった。要求 scope の集合を `CalendarAuth.REQUESTED_SCOPE_URIS` に集約し（認可要求は必ずこの一覧から組み立てる）、テストがその一覧そのものについて「calendar.readonly 1 件のみ」であることを検証するようにした。なお Scope オブジェクトの生成は GMS の Preconditions 経由で android.text.TextUtils を呼ぶため JVM 単体テストでは実行できず、一覧から Scope への変換（1 対 1 のラップ）はテスト対象外。(2) Google Cloud プロジェクト「musecal」の Web クライアント ID を `R.string.google_web_client_id` に実値差し替え（クライアント ID は公開情報。シークレットは不使用・未記録）
+- 証拠: `scripts/check.sh` 成功（assembleDebug / testDebugUnitTest / lintDebug すべて OK）。単体テスト 8 件全通過（TextShadeTest 6 件＋CalendarAuthTest 2 件）
+- AI判定 / 人判定: AI判定=レビュー条件対応済み / 実機検証=**未実施**（ユーザーの実機でログイン試行待ち）。V1-1 の完了条件（実機でログインできる・再起動後も保持される）は未確認のため、V1-1 は未完了のまま

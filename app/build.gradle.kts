@@ -88,6 +88,12 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
+    // V1-1 ログイン基盤： Credential Manager で Google ID トークンのサインイン状態を作り、
+    // Calendar のアクセス権は Play services auth の AuthorizationClient で要求する（CalendarAuth.kt）。
+    implementation("androidx.credentials:credentials:1.5.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+    implementation("com.google.android.gms:play-services-auth:21.3.0")
     testImplementation("junit:junit:4.13.2")
     // EM-1: JVM スクショテスト（Roborazzi + Robolectric + Compose UI Test）
     testImplementation(platform("androidx.compose:compose-bom:2024.12.01"))

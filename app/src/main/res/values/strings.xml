@@ -1,3 +1,8 @@
 <resources>
     <string name="app_name">MuseCal</string>
+    <!-- V1-1: Credential Manager（GetGoogleIdOption）の serverClientId。
+         Google Cloud プロジェクト「musecal」の「ウェブアプリケーション」タイプの
+         OAuth クライアント ID（クライアント ID は公開情報であり秘密ではない）。
+         Android タイプのクライアント（パッケージ名＋SHA-1）は AuthorizationClient 側で使われる。 -->
+    <string name="google_web_client_id">820581792036-j7q64321f9j44ll1bbpi96hke2d16o8i.apps.googleusercontent.com</string>
 </resources>

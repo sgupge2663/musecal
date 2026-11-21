@@ -114,3 +114,5 @@ JVM スクショテスト（Roborazzi + Robolectric、エミュレータなし�
 - 結果: `scripts/check.sh` 成功（単体テスト 21件全通過、うち CalendarsTest 10件）。Roborazzi 3画面は verify で一致し、`recordRoborazziDebug` で再記録しても PNG の差分なし（month_view.png sha1 a85504c…）。月表示のタブ帯を切り出して目視し、メイン=#9fe1e7・AI木曜会=#fad165・日本の祝日=#9a9cff の色線を確認
 - QC-05: AI判定=適合見込み（タブの ON/OFF を calendarId で判定、色線は calendarList の色） / 人判定=未確認（実機確認は V1-3 後に実データ版でまとめて行う）
 - 未確認: 実機での calendarList 取得（実 API 呼び出し）と、各タブにそのカレンダーの予定だけが出ること（V1-2 完了条件。V1-3 後）
+- レビュー条件対応（2026-11-21、Codex 条件1）: 取得要求をアカウントに紐づけ、今のアカウントと一致しない結果を捨てる `AccountRequestGate` を追加。固定ケース「取得中にサインアウト→別アカウントへサインイン」を `AccountRequestGateTest` で再現（遅れて返った前アカウントの結果は、新アカウントの結果の前後どちらで返っても反映されない）。結果: `scripts/check.sh` 成功（単体テスト 27件全通過、うち AccountRequestGateTest 6件）、`verifyRoborazziDebug` 一致（ベースライン変更なし）。UI 結合（実機でのサインアウト→別アカウント）は未確認
+- 条件2（実機証拠とユーザー判定）: 未確認のまま据え置き（V1-3 後の実データ版でまとめて行う）

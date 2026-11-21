@@ -151,3 +151,33 @@ object CalendarListApi {
         }
     }
 }
+
+/**
+ * V1-2（Codex レビュー条件）: calendarList の取得要求をサインイン中のアカウントに紐づけ、古い結果を捨てるための札。
+ *
+ * 取得は「認可 → （必要なら同意画面）→ calendarList」と非同期に進むため、途中でサインアウトや別アカウントへの
+ * サインインが起きると、遅れて返った前のアカウントの結果が今のアカウントのタブを上書きしうる。
+ * そこで、アカウントが決まるたびに [begin] で新しい札を出し、結果を反映する前に [isCurrent] で
+ * 「札が最新」かつ「札のアカウント = 今サインイン中のアカウント」を確かめる。どちらかが違えば結果は捨てる。
+ * 同じアカウントへのサインインし直し（A → サインアウト → A）でも札は新しくなるので、前回の結果は反映しない。
+ *
+ * UI スレッドからだけ呼ぶ前提（Compose の状態更新と同じスレッド）なので同期はしない。
+ */
+internal class AccountRequestGate {
+    data class Ticket(val accountEmail: String, val seq: Long)
+
+    private var seq = 0L
+    private var current: Ticket? = null
+
+    /** [accountEmail] の取得を始める。以前に出した札はすべて無効になる。 */
+    fun begin(accountEmail: String): Ticket = Ticket(accountEmail, ++seq).also { current = it }
+
+    /** サインアウト時など。出した札をすべて無効にする。 */
+    fun invalidate() {
+        current = null
+    }
+
+    /** [ticket] の結果を今反映してよいか。[signedInEmail] は反映する時点でサインイン中のアカウント。 */
+    fun isCurrent(ticket: Ticket, signedInEmail: String?): Boolean =
+        ticket == current && ticket.accountEmail == signedInEmail
+}

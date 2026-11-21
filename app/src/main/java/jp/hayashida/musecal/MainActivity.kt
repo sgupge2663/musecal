@@ -209,9 +209,18 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     // V1-2: calendarList から対応づけた下部タブ。取得できるまでは空（サンプルのタブで実データを装わない）。
     var tabs by remember { mutableStateOf<List<CalendarTab>>(emptyList()) }
 
-    fun loadCalendarList(accessToken: String) {
+    // 取得要求をアカウントに紐づける札。結果は「札が最新」かつ「今もそのアカウントでサインイン中」のときだけ反映する
+    // （A の取得中にサインアウト → B へサインイン、で遅れて返った A の結果が B のタブを上書きしないように）。
+    val gate = remember { AccountRequestGate() }
+    // 同意画面を出している間の札（同意画面の結果はこの札の要求として扱う）。
+    var consentTicket by remember { mutableStateOf<AccountRequestGate.Ticket?>(null) }
+    fun isCurrent(ticket: AccountRequestGate.Ticket) = gate.isCurrent(ticket, auth.account.value?.email)
+
+    fun loadCalendarList(ticket: AccountRequestGate.Ticket, accessToken: String) {
         scope.launch {
-            runCatching { CalendarListApi.fetchAll(accessToken) }
+            val result = runCatching { CalendarListApi.fetchAll(accessToken) }
+            if (!isCurrent(ticket)) return@launch   // 古い要求の結果（成功・失敗とも）は捨てる
+            result
                 .onSuccess { tabs = mapCalendarTabs(it) }
                 .onFailure {
                     Toast.makeText(context, "カレンダー一覧を取得できませんでした: ${it.message}", Toast.LENGTH_LONG).show()
@@ -223,23 +232,30 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     val consentLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
+        val ticket = consentTicket
+        consentTicket = null
+        if (ticket == null || !isCurrent(ticket)) return@rememberLauncherForActivityResult
         val token = if (result.resultCode == Activity.RESULT_OK && result.data != null) {
             runCatching { auth.authorizationResultFromIntent(result.data!!).accessToken }.getOrNull()
         } else null
         if (token != null) {
-            loadCalendarList(token)
+            loadCalendarList(ticket, token)
         } else {
             Toast.makeText(context, "カレンダーへのアクセスが許可されませんでした", Toast.LENGTH_SHORT).show()
         }
     }
 
-    fun requestCalendarAccess() {
+    fun requestCalendarAccess(ticket: AccountRequestGate.Ticket) {
         scope.launch {
-            when (val access = auth.authorizeCalendar()) {
+            val access = auth.authorizeCalendar()
+            if (!isCurrent(ticket)) return@launch
+            when (access) {
                 // トークンは保存せず、その場の取得にだけ使う（V1-3 以降も取得のたびに取り直す）。
-                is CalendarAuth.CalendarAccess.Granted -> loadCalendarList(access.accessToken)
-                is CalendarAuth.CalendarAccess.ConsentRequired ->
+                is CalendarAuth.CalendarAccess.Granted -> loadCalendarList(ticket, access.accessToken)
+                is CalendarAuth.CalendarAccess.ConsentRequired -> {
+                    consentTicket = ticket
                     consentLauncher.launch(IntentSenderRequest.Builder(access.intentSender).build())
+                }
                 is CalendarAuth.CalendarAccess.Failed ->
                     Toast.makeText(
                         context,
@@ -252,10 +268,11 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
 
     val current = account
     // サインイン済みのアカウントが決まるたびに（サインイン直後・再起動時）カレンダー一覧を取り直す。
-    // 認可済みなら同意画面は出ずにトークンが返る。サインアウトしたらタブを消す。
+    // 認可済みなら同意画面は出ずにトークンが返る。サインアウトしたらタブを消し、進行中の要求の札を無効にする。
     LaunchedEffect(current?.email) {
         tabs = emptyList()
-        if (current != null) requestCalendarAccess()
+        val email = current?.email
+        if (email == null) gate.invalidate() else requestCalendarAccess(gate.begin(email))
     }
     if (current == null) {
         SignInScreen(auth) {}

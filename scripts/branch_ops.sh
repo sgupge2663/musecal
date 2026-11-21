@@ -12,11 +12,16 @@
 # prune が絶対に触らないもの（対象外として報告する）:
 #   - main 自身（ローカル・リモートとも）
 #   - BASE に統合されていないブランチ
-#   - 未着手のローカルブランチ（reflog が作成時の1件だけ＝自分のコミットが無い。作りたての作業ブランチを守る）
-#   - 同名のローカルブランチが上記や下記で守られているリモートブランチ
+#   - 未着手のローカルブランチ（reflog に自分のコミットの記録が無い。作りたての作業ブランチを守る。判定は is_untouched）
 #   - worktree が「使用中」（このスクリプトを実行している worktree、主作業ツリー、lock 中、ディレクトリ欠落）
 #     または「変更あり」（未コミット・未追跡ファイルあり）のブランチ
-# 削除は git branch -d（安全削除）と git worktree remove（force なし）だけで行う。-D / --force は使わない。
+#   - git branch -d が拒否する状態のローカルブランチ（upstream が古い等。消すと半端になるため保留）
+#   - 同名のローカルブランチが上記で守られているリモートブランチ。prune の実行中に同名ローカルの削除が
+#     失敗した（worktree を外せなかった等）リモートブランチも消さない
+# 判定は classify_local / classify_remote の1か所で行い、audit の表示と prune の実行は同じ判定結果（ROWS）を使う。
+# ローカルの削除は git branch -d（安全削除）と git worktree remove（force なし）だけで行う。-D / --force は使わない。
+# リモートの削除は、判定時に確かめた SHA に限定した git push --force-with-lease=<ref>:<SHA> で行う
+# （その間にリモートが更新されていたら push が拒否され、消さない）。無条件の force push はしない。
 #
 # 終了コード: audit は 要掃除 0 件なら 0、要掃除ありなら 2。prune は対象外があっても 0、削除の失敗があれば 1。
 
@@ -95,11 +100,25 @@ flush_wt
 is_integrated() { git merge-base --is-ancestor "$1" "$BASE" 2>/dev/null; }
 last_date() { git log -1 --format=%cd --date=format-local:'%Y-%m-%d %H:%M %z' "$1" 2>/dev/null; }
 
-# 未着手: ローカルブランチの reflog が作成の1件だけ（その上で自分のコミットをしていない）
+# 未着手: ローカルブランチの reflog に「このブランチ上で新しいコミットを作った」記録が1件も無い。
+# 件数では判定しない（古い main から作って main へ fast-forward しただけのブランチは reflog が2件以上になるが、
+# 自分のコミットは無い）。reflog の各記録の件名（%gs）を見て、次のものだけを「自分のコミット」と数える:
+#   commit: / commit (amend|merge|initial): / cherry-pick: / revert: / am: / 〜: Merge made by …（merge コミット）
+# 作成（branch: Created from）・fast-forward（merge X: Fast-forward、pull: Fast-forward）・reset・rebase・rename などは
+# 新しいコミットを作らない（rebase は既存コミットの付け替えで、元のコミットは commit: として残っている）ので数えない。
+# 記録の種類が分からないときは「自分のコミットが無い」側（＝未着手として保護）に倒れる。
+# reflog が無い・期限切れで消えた場合も未着手扱いになり、消さない（安全側）。
 is_untouched() {
-  local n
-  n=$(git reflog show --format=%H "refs/heads/$1" -- 2>/dev/null | wc -l)
-  [ "$n" -le 1 ]
+  ! git reflog show --format=%gs "refs/heads/$1" -- 2>/dev/null \
+    | grep -Eq '^(commit|commit \((amend|merge|initial)\)|cherry-pick|revert|am): |: Merge made by '
+}
+
+# git branch -d が受け入れるか（upstream があれば upstream、無ければ HEAD にマージ済みか）。
+# 拒否される状態なら worktree も外さない（worktree だけ消えてブランチが残る半端を防ぐ）
+branch_d_ok() {
+  local up
+  up=$(git rev-parse -q --verify "$1@{upstream}" 2>/dev/null || true)
+  git merge-base --is-ancestor "$1" "${up:-HEAD}" 2>/dev/null
 }
 
 # worktree の状態: 空=worktree なし / busy:<理由> / dirty / clean
@@ -131,9 +150,13 @@ classify_local() {
   if [ "$b" = "$MAIN" ]; then echo "local|$b|基準|$(last_date "$b")|$wt|main|"; return; fi
   if is_integrated "$b"; then integ="統合済み"; fi
   if [ "$integ" = 未統合 ]; then verdict="作業中"; reason="未統合"
-  elif is_untouched "$b"; then verdict="未着手"; reason="自分のコミットが無い。作りたて"
+  elif is_untouched "$b"; then verdict="未着手"; reason="自分のコミットが無い（作成・fast-forward のみ）"
   elif [ "$st" = dirty ]; then verdict="要掃除(保留)"; reason="worktree に未コミットの変更あり"
   elif [ "${st%%:*}" = busy ]; then verdict="要掃除(保留)"; reason="worktree 使用中: ${st#busy:}"
+  elif ! branch_d_ok "$b"; then
+    verdict="要掃除(保留)"
+    if git rev-parse -q --verify "$b@{upstream}" >/dev/null 2>&1; then reason="git branch -d が拒否する状態（upstream $(git rev-parse --abbrev-ref "$b@{upstream}") に未反映のコミットあり）— push するか upstream を確かめる"
+    else reason="git branch -d が拒否する状態（この作業ツリーの HEAD に未マージ）— main を checkout した主作業ツリーで実行する"; fi
   else verdict="要掃除"; fi
   echo "local|$b|$integ|$(last_date "$b")|$wt|$verdict|$reason"
 }
@@ -208,15 +231,9 @@ for r in "${ROWS[@]}"; do
 done
 
 FAIL=0
+# 削除可否は上の判定（ROWS）で確定済み。ここでは判定し直さず、実行時の失敗だけを扱う
 for b in "${DEL_LOCAL[@]}"; do
   p="${WT_PATH[$b]:-}"
-  # git branch -d の判定（upstream があれば upstream、無ければ HEAD にマージ済みか）を先に確かめる。
-  # 拒否される状態なら worktree も外さない（worktree だけ消えてブランチが残る半端を防ぐ）
-  up=$(git rev-parse -q --verify "$b@{upstream}" 2>/dev/null || true)
-  if ! git merge-base --is-ancestor "$b" "${up:-HEAD}" 2>/dev/null; then
-    SKIPS+=("local $b: git branch -d が拒否する状態（${up:+upstream}${up:-HEAD} 未マージ）— main を checkout した主作業ツリーで実行してください")
-    continue
-  fi
   if [ "$DRY_RUN" = 1 ]; then
     echo "削除予定: local $b${p:+ ＋ worktree $(rel "$p")}"; continue
   fi
@@ -230,6 +247,10 @@ for b in "${DEL_LOCAL[@]}"; do
 done
 for b in "${DEL_REMOTE[@]}"; do
   if [ "$DRY_RUN" = 1 ]; then echo "削除予定: remote $REMOTE/$b"; continue; fi
+  # 同名ローカルの削除が失敗して残っていたら、リモートも残す（判定時は 要掃除 でも、実行結果で守る側に倒す）
+  if git rev-parse -q --verify "refs/heads/$b" >/dev/null; then
+    echo "失敗: remote $REMOTE/$b は同名のローカルブランチが削除できず残っているため残します" >&2; FAIL=1; continue
+  fi
   # 直前に統合済みを再確認してから、リモートの値がその時点のままのときだけ消す（--force-with-lease 相当の保護）
   sha=$(git rev-parse "refs/remotes/$REMOTE/$b")
   if ! is_integrated "$sha"; then echo "失敗: remote $b が統合済みでなくなりました（残します）" >&2; FAIL=1; continue; fi

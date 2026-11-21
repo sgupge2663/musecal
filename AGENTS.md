@@ -25,7 +25,8 @@
   2. main へ統合（fast-forward か merge）し、main を push する
   3. `scripts/branch_ops.sh prune --dry-run` で削除対象を確かめ、`scripts/branch_ops.sh prune` で統合済みのブランチ（ローカル＋リモート）と worktree を片づける
   4. `scripts/branch_ops.sh audit` が「クリーン」（終了コード 0）になることを確かめる。「保留」が出たら、その worktree の変更・使用状況を確かめてから片づける
-- **prune が触らないもの**： main、未統合のブランチ、自分のコミットがまだ無い作りたてのブランチ、使用中（実行中・主作業ツリー・lock 中）や未コミット変更ありの worktree、それらと同名のリモートブランチ。削除は `git branch -d` と `git worktree remove`（force なし）だけで行う。
+- **prune が触らないもの**： main、未統合のブランチ、自分のコミットがまだ無いブランチ（作りたてや、main へ fast-forward しただけのものを含む）、使用中（実行中・主作業ツリー・lock 中）や未コミット変更ありの worktree、`git branch -d` が拒否する状態（upstream が古い等）のブランチ、それらと同名のリモートブランチ、同名ローカルの削除が実行中に失敗したリモートブランチ。`audit` の「prune で消せる」と `prune` が消すものは同じ判定から出る。
+- **削除の方法**： ローカルは `git branch -d` と `git worktree remove`（どちらも force なし。`-D`・`--force` は使わない）。リモートは、統合済みを確かめた SHA に限定した `git push --force-with-lease=refs/heads/<名前>:<SHA> origin :refs/heads/<名前>` で消す（リモートがその SHA から動いていたら拒否されて残る条件付き削除。無条件の force push はしない）。
 
 ## ファイルの役割
 - `REQUIREMENTS.md` … 仕様の正本（What / Why）。実測値もここに記録する

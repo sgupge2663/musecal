@@ -20,6 +20,13 @@
   - 状態： 完了。`scripts/check.sh` 成功（assembleDebug / testDebugUnitTest / lintDebug OK、ローカル 3分41秒。pre-push でも再実行され通過）。ブランチ CI Build APK run 44918250869 = success（a7cb8a0、成果物 musecal-debug-apk-a7cb8a0）。本記録の追記コミットの run は Muse への報告で参照
   - 完了条件: `scripts/check.sh` 成功、ブランチ push の Build APK run が success
   - 検証方法: check.sh の出力、`gh run list --branch claude/branch-ops`
+- [x] BO-7 Codex レビュー（a7cb8a0、判定「不可」、work/branch_ops_review_codex.md）の指摘3件を直す
+  - 状態： 修正済み。再レビュー待ち
+    - 指摘1（高）: 削除可否の判定を classify_local / classify_remote に一元化。「git branch -d が拒否する状態」（upstream が古い等）の判定を prune の実行ループから classify_local へ移し、ローカルの最終判定（保護/削除）が出てからリモートの判定をその結果で決める。audit の表示と prune（dry-run・実行）は同じ ROWS を使う。実行時に同名ローカルの削除が失敗した（worktree を外せない等）場合は、リモート削除の直前に refs/heads/<名前> の残存を確かめて残す
+    - 指摘2（中）: 未着手の判定を reflog の件数から中身に変更（is_untouched）。根拠: 新しいコミットを作る操作だけが reflog に `commit:`・`commit (amend|merge|initial):`・`cherry-pick:`・`revert:`・`am:`・`…: Merge made by …` を残す（git 2.43 で実測）。作成（`branch: Created from`）と fast-forward（`merge X: Fast-forward`）はコミットを作らない。これらが1件も無ければ未着手として保護する。種類が分からない記録・reflog が無い場合は保護側に倒れる
+    - 指摘3（中）: AGENTS.md「ブランチ運用」に「削除の方法」を分けて書き、リモートは確認済み SHA に限定した `--force-with-lease` で消す条件付き削除であることを明記。保護対象に fast-forward のみのブランチ・branch -d が拒否する状態・実行時失敗を追記
+  - 完了条件: 指摘1〜3の再現条件で、ローカル・リモートとも消えない。audit の「消せる」と prune の削除予定が一致する。AGENTS.md の記述が実装と一致する
+  - 検証方法: `work/branch_ops_demo_v2.sh` を修正前・修正後で実行（`work/branch_ops_demo_v2_before.log` / `work/branch_ops_demo_v2.log`）。追加ケース (a) 未コミット変更ありの統合済みブランチ、(b) fast-forward のみのブランチ、(c) audit と prune の一致。要点は docs/qc.md の「Codex レビュー（不可）指摘3件の修正後の再実演」
 - [ ] BO-6 レビューと実運用での確認（著者≠検査役）
   - 状態： 未着手。Codex のレビューと、Muse が次の実際の統合で「統合 → prune → audit クリーン」を1回通すこと
   - 完了条件: レビュー記録が work/ にあり重大指摘が解消している。実際の統合後に audit がクリーン

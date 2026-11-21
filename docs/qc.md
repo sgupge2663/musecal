@@ -131,3 +131,18 @@ JVM スクショテスト（Roborazzi + Robolectric、エミュレータなし�
 - AI判定: 適合（完了条件 BO-2〜BO-4 を満たす）。実演の途中で「作りたてのローカルブランチと同名のリモートブランチが消える対象になる」欠陥を見つけて修正済み（同名ローカルが守られていればリモートも守る）
 - 人判定: 未実施
 - 理想 / 対策: 実際の統合で Muse が「統合 → prune → audit クリーン」を通して初めて運用として成立する（BO-6）
+
+### 2026-11-21 BO Codex レビュー（不可）指摘3件の修正後の再実演（ブランチ claude/branch-ops）
+- 対象: レビュー記録 `work/branch_ops_review_codex.md`（a7cb8a0 に対し判定「不可」）の指摘1〜3を修正したコミット（BO-7）。CI run はコミットメッセージと Muse への報告で参照
+- 入力・経路: Claude Code が実行。`work/branch_ops_demo_v2.sh <branch_ops.sh>` で毎回 `mktemp -d`（/tmp/bo-demo-v2-*）に検証用クローンを作る（リモート役はローカル bare。GitHub には触れない。固定パスの rm -rf はしない）。同じ手順を修正前（a7cb8a0 の版）と修正後の両方で実行
+- 状態: 従来の A〜E に加えて — F 統合済み・リモートも最新・worktree に未コミット変更（claude/demo-dirty-remote）[追加 a]、G 古い main から作り main へ fast-forward しただけ（reflog「Created from」「merge main: Fast-forward」の2件、独自コミット無し、リモートにも push）（claude/demo-ff-only）[追加 b]、H 統合済みだが upstream が古い（指摘1の再現条件）（claude/demo-stale-up）、I 統合済み・clean な worktree＋リモートで、prune 時に `git worktree remove` だけ失敗させる故障注入（PATH 先頭の git ラッパー）（claude/demo-wt-fail）
+- 結果（修正前 a7cb8a0 の版）: 指摘を再現。audit で G と H のローカル・リモート、I が「要掃除」。dry-run の削除予定に local G・remote G・remote H・remote I。prune で local G（＋worktree）と remote G・H・I を削除（I は worktree 失敗でローカルが残ったのにリモートが消えた）。audit の「消せる」と dry-run の削除予定が不一致（local H が audit だけにある）
+- 結果（修正後）:
+  - (a) F: ローカル「要掃除(保留) — worktree に未コミットの変更あり」、リモート「要掃除(保留) — 同名のローカルブランチが 要掃除(保留) のため」。prune 後もローカル・リモート・wip.txt とも残存
+  - (b) G: ローカル「未着手 — 自分のコミットが無い（作成・fast-forward のみ）」、リモートも保留。prune 後も両方残存
+  - 指摘1: H はローカル「要掃除(保留) — git branch -d が拒否する状態（upstream … に未反映のコミットあり）」、リモートも保留で残存。I は「失敗: worktree … を外せませんでした」に続き「失敗: remote origin/claude/demo-wt-fail は同名のローカルブランチが削除できず残っているため残します」、prune の終了コード 1、ローカル・リモートとも残存
+  - (c) audit で「要掃除」の5件（local A・I、remote A・I・E）と dry-run の削除予定5件が完全一致（diff 差分なし）。実際の削除は local A・remote A・remote E の3件で、残った2件（local I・remote I）は失敗として報告済み。「audit で要掃除でないのに消えたもの」は 0 件。掃除後の audit は「消せる 2 件（I）/ 保留 7 件」
+  - 本リポジトリ: `scripts/branch_ops.sh audit --no-fetch` は claude/branch-ops（local・remote）が「作業中 — 未統合」、結果クリーン、終了コード 0。`bash -n` 成功
+  - 証拠ファイル: `work/branch_ops_demo_v2.log`（修正後）・`work/branch_ops_demo_v2_before.log`（修正前）（Git 管理外）
+- AI判定: 適合（指摘1〜3の対応と追加ケース a〜c を満たす）。再レビューは未実施
+- 人判定: 未実施

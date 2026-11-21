@@ -21,19 +21,21 @@
   - 完了条件: `scripts/check.sh` 成功、ブランチ push の Build APK run が success
   - 検証方法: check.sh の出力、`gh run list --branch claude/branch-ops`
 - [x] BO-7 Codex レビュー（a7cb8a0、判定「不可」、work/branch_ops_review_codex.md）の指摘3件を直す
-  - 状態： 修正済み。再レビュー待ち
+  - 状態： 修正済み。再レビュー（work/branch_ops_rereview_codex.md）で指摘1・3は解消判定。指摘2の修正に残った欠陥は BO-8 へ
     - 指摘1（高）: 削除可否の判定を classify_local / classify_remote に一元化。「git branch -d が拒否する状態」（upstream が古い等）の判定を prune の実行ループから classify_local へ移し、ローカルの最終判定（保護/削除）が出てからリモートの判定をその結果で決める。audit の表示と prune（dry-run・実行）は同じ ROWS を使う。実行時に同名ローカルの削除が失敗した（worktree を外せない等）場合は、リモート削除の直前に refs/heads/<名前> の残存を確かめて残す
     - 指摘2（中）: 未着手の判定を reflog の件数から中身に変更（is_untouched）。根拠: 新しいコミットを作る操作だけが reflog に `commit:`・`commit (amend|merge|initial):`・`cherry-pick:`・`revert:`・`am:`・`…: Merge made by …` を残す（git 2.43 で実測）。作成（`branch: Created from`）と fast-forward（`merge X: Fast-forward`）はコミットを作らない。これらが1件も無ければ未着手として保護する。種類が分からない記録・reflog が無い場合は保護側に倒れる
     - 指摘3（中）: AGENTS.md「ブランチ運用」に「削除の方法」を分けて書き、リモートは確認済み SHA に限定した `--force-with-lease` で消す条件付き削除であることを明記。保護対象に fast-forward のみのブランチ・branch -d が拒否する状態・実行時失敗を追記
   - 完了条件: 指摘1〜3の再現条件で、ローカル・リモートとも消えない。audit の「消せる」と prune の削除予定が一致する。AGENTS.md の記述が実装と一致する
   - 検証方法: `work/branch_ops_demo_v2.sh` を修正前・修正後で実行（`work/branch_ops_demo_v2_before.log` / `work/branch_ops_demo_v2.log`）。追加ケース (a) 未コミット変更ありの統合済みブランチ、(b) fast-forward のみのブランチ、(c) audit と prune の一致。要点は docs/qc.md の「Codex レビュー（不可）指摘3件の修正後の再実演」
 - [x] BO-8 Codex 再レビュー（5f3da7d、判定「不可」、work/branch_ops_rereview_codex.md）の P2 を直す
-  - 状態： 修正済み。再レビュー待ち。前回指摘1・3は再レビューで解消判定
+  - 状態： 修正済み。確認レビュー（bfaca4c、work/branch_ops_p2_review_codex.md）で「受理可・P2 解消・統合に進んでよい」。前回指摘1・3は再レビューで解消判定
     - P2: is_untouched が `git reflog … | grep -Eq …` だったため、grep -q が一致で入力を閉じると長い reflog の git reflog が SIGPIPE（141）で終わり、pipefail でパイプ全体が失敗 → 先頭の `!` で「未着手」に反転していた。reflog を変数に最後まで読み込んでから here-string で grep する形に変更（reflog が読めないときは従来どおり未着手＝保護側）
     - 同じパターンの点検: branch_ops.sh の他のパイプ（usage の sed、主作業ツリーの sed -n、for-each-ref | grep -v | sort、dispw の wc）はどれも入力を最後まで読み、終了コードを判定に使っていないため対象外
   - 完了条件: 自分のコミットを数百件持つ統合済みブランチが「未着手」にならず、ローカル・リモートとも削除対象として扱われる。既存ケース A〜I の結果は変わらない
   - 検証方法: `work/branch_ops_demo_v3.sh`（v2 ＋ ケース J: 空コミット 400 件・FF 統合済み・worktree・リモートあり）を修正前（5f3da7d の版）と修正後で実行（`work/branch_ops_demo_v3_before.log` / `work/branch_ops_demo_v3.log`）。要点は docs/qc.md の「再レビュー P2（長い reflog）の修正後の再実演」
-- [ ] BO-6 レビューと実運用での確認（著者≠検査役）
-  - 状態： 未着手。Codex のレビューと、Muse が次の実際の統合で「統合 → prune → audit クリーン」を1回通すこと
+- [x] BO-6 レビューと実運用での確認（著者≠検査役）
+  - 状態： 完了（2026-11-22、Muse が統合を実施）。Codex レビューは3巡（初回「不可」→ 再レビュー「指摘1・3解消、P2 残存」→ 確認レビュー「受理可」）。記録は work/branch_ops_review_codex.md、work/branch_ops_rereview_codex.md、work/branch_ops_p2_review_codex.md
+  - 統合の実施記録: ブランチ最終コミット bfaca4c の CI（Build APK run 44920140429 = success）を Muse が gh で確認 → main へ fast-forward 統合 → main を push（pre-push の check.sh 通過）→ prune で worktree `.worktrees/claude-branch-ops`・ローカル `claude/branch-ops`・リモート `origin/claude/branch-ops` を削除（リモート削除の push は削除のみのため check.sh 省略が発動）→ audit が「クリーン（統合済みなのに残っているブランチは 0 件）」終了コード 0
+  - 手順からの逸脱メモ: 正本の統合手順は prune --dry-run を先に置くが、今回は対象が統合済みの当該ブランチ1件のみで自明だったため dry-run を省略して prune を実行した。次回からは手順どおり dry-run から行う
   - 完了条件: レビュー記録が work/ にあり重大指摘が解消している。実際の統合後に audit がクリーン
   - 検証方法: レビュー記録、統合時の audit 出力

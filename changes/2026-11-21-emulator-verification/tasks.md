@@ -6,14 +6,23 @@
   - 検証方法: わざと色を1つ変えた試験変更で、差分として検出されることを確認し QC に記録
   - 完了記録（2026-11-21）: 3画面のベースラインを `app/src/test/screenshots/` に固定し、運用手順と実証記録は docs/qc.md。当初2画面で先行し、未ログイン案内画面は V1-1（claude/v11-signin、当時は未統合）が main（1614531）に統合された後、本ブランチへ main をマージして3画面目（sign_in_guide.png）を追加し完了とした。あわせて Codex レビュー条件対応として、CI への roborazzi 出力の常時アップロード追加と、verify 強制の対象絞り込みを実施
 
-- [ ] EM-2 CI エミュレータジョブ（Phase 2 / 案C）
+- [ ] EM-2 CI エミュレータジョブ（Phase 2 / 案C）— 完了条件は達成（2026-11-21）、Muse の確認待ち
   - 内容: GitHub Actions に workflow_dispatch のジョブを追加。Ubuntu ランナー＋KVM でエミュレータを起動し、デバッグ APK をインストール。主要画面の撮影に加え、Compose UI Test 等のシナリオで実際に操作する（タブ切替、日タップ→ポップアップ、月表示のスクロール、未ログイン画面の表示確認）。各ステップのスクショと画面構造ダンプを成果物に上げる
   - 完了条件: 手動実行で操作シナリオまで含めて成功し、PNG と画面構造が成果物から取得できる。サインインは未ログイン状態の確認まで（実アカウントは使わない）
   - 検証方法: 実行ログと成果物を Muse が確認。所要時間も記録する
   - 実装（2026-11-21、ブランチ claude/em2-ci-emulator）: ワークフロー `.github/workflows/emulator.yml`（workflow_dispatch のみ。build.yml は不変）＋本体スクリプト `.github/scripts/em2_scenario.sh`（`scripts/` は .gitignore の許可リスト制のため、既存ファイルを変えずに置ける場所として .github/ 配下にした）＋ instrumented テスト `app/src/androidTest/`。app/build.gradle.kts は末尾に別ブロックで testInstrumentationRunner と androidTestImplementation を追加しただけ（V1-3 との衝突回避）
   - 方式の選択: 「adb 入力＋UI Automator」と「Compose UI Test」の併用。理由: 実アプリは未サインインだと案内画面しか出さず（MuseCalRoot）、実アカウントは使わないので、実アプリを起動して操作できるのは案内画面まで。そこで (1) 実アプリの起動〜未ログイン案内の確認は adb（am start・screencap・uiautomator dump）で入口そのものを確かめ、(2) 月表示の操作（タブ切替・日タップ→ポップアップ・スクロール）は EM-1 と同じ前提（サンプル予定・今日=2026-12-16・既存3タブ）で MuseCalApp を描画し Compose UI Test で実エミュレータ上でタップ・スワイプする。Compose は描画を Canvas で行うため予定の文字は画面構造に出ず、座標指定の adb 入力だけでは「操作が効いたか」を判定しにくい。Compose UI Test ならノード指定の操作・待機と、画面の画素差による判定が確実にできる
   - 証拠: 1ステップごとに PNG（端末のスクリーンショット）・XML（UI Automator dump）・Compose セマンティクスのテキストを成果物 `emulator-evidence-<sha>` に上げる。判定に使った画素差は notes.txt
-  - 実行記録: （CI 実行後に記入）
+  - 実行記録（2026-11-21）:
+    - workflow_dispatch 実行: run 44923910463（コミット 82aaaa0）成功。ジョブ全体 4分13秒（16:19:12〜16:23:25 UTC）。内訳: APK＋テスト APK のビルド 2分01秒、エミュレータ起動〜シナリオ〜取り出し 2分02秒（timing.txt では 122 秒。シナリオ本体はインストール開始から 36 秒）
+    - 端末: Android 14（API 34 google_apis x86_64、pixel_6 プロファイル、1080x2400・420dpi）
+    - 結果: 実アプリ起動 PASS（起動後の uiautomator dump に「Google でログイン」）、instrumented `OK (2 tests)`。判定値（notes.txt）: タブ「メイン」非表示で画素差 3.6%、戻すと 0.0%（初期表示と一致）、上下スクロール前後で 23.7%。上スクロール2回で見出しは 2026年12月→2027年9月
+    - 成果物 `emulator-evidence-82aaaa0`（34ファイル）: app_launch/（01_launch_signed_out.png・.xml、am_start.txt、resumed_activity.txt、result.txt）、em2/signed_out/（01_sign_in_guide の .png・.xml・_semantics.txt）、em2/month_view/（01_month_initial・02_tab_main_hidden・03_tab_main_shown・04_day_popup_dec16・05_popup_closed・06_scrolled_forward・07_scrolled_back の各 .png・.xml・_semantics.txt、notes.txt）、instrument.txt、logcat.txt、device.txt、timing.txt。PNG は Claude Code が目視確認済み（案内画面、メイン非表示、12/16 ポップアップ「3 予定」、2027年9月へのスクロール）
+    - 同じ内容の先行実行: run 44923393577（コミット 665623b、push 起動）成功
+    - push 時の Build APK: run 44922971487（221a836）成功 3分49秒。Build APK は androidTest をコンパイルしないため、テストのコンパイルの証拠は emulator ワークフローのビルド工程
+  - 手順上の注意（ワークフロー登録）: GitHub は既定ブランチ（main）に無いワークフローをファイル名で workflow_dispatch できない（`gh workflow run emulator.yml` は HTTP 404）。そこで 665623b で一時的に「このブランチへの push」トリガーを足して1回走らせ、ワークフロー ID（426107230）を登録させてから、82aaaa0 で外し（ファイルは 221a836 と同一）、`gh workflow run 426107230 --ref claude/em2-ci-emulator` で起動した。main 統合後は Actions 画面の「Run workflow」またはファイル名で起動できる
+  - 未確認: ローカルでの instrumented テストのコンパイル（3回とも、他セッションの Gradle が共有キャッシュを握っていてロック待ちで起動できず。CI の成功で代替）。actionlint によるワークフロー検査（道具の取得が権限で止められたため、YAML の構文解析と GitHub 上での実行成功で代替）。push は SKIP_CHECK=1（理由: 同じ Gradle ロック競合で check.sh が回らないため。gate は CI）
+  - 判断してほしいこと: (1) 月表示の操作は実アプリ（MainActivity）ではなく MuseCalApp を直接描画した画面で行っている（未サインインでは月表示に入れないため）。実アプリの月表示まで操作したい場合は、デバッグ限定のダミーサインイン入口など仕様の追加が要る。(2) logcat.txt（約2.4MB）も成果物に含めている。公開リポジトリの成果物は誰でも見られるが、中身はエミュレータとサンプル予定のログのみ
 
 - [ ] EM-3 QC への組み込み
   - 内容: docs/qc.md の視覚系ケース（QC-03 レイアウト、QC-06 スクロール等）に、エミュレータ／スクショテストでの一次判定の手順と、実機判定が必要な範囲の切り分けを追記する

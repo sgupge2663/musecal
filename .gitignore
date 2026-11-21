@@ -1,6 +1,8 @@
 # VM-local toolchain & sandbox proxy helpers (contain local paths / proxy auth — never commit)
 toolchain/
-scripts/
+scripts/*
+!scripts/check.sh
+!scripts/build_docs.sh
 local.properties
 work/
 
@@ -15,3 +17,10 @@ app/build/
 .idea/
 *.iml
 .DS_Store
+
+# Agent worktrees
+.worktrees/
+
+# Docs site staging/output
+site_src/
+site/

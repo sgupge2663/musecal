@@ -1,0 +1,6 @@
+#!/bin/sh
+# push 前にチェックを通す。check.sh が無い場合は止める（素通りさせない）
+if [ "$SKIP_CHECK" = "1" ]; then echo "pre-push: SKIP_CHECK=1 のためチェックを省略（理由は報告に残すこと）"; exit 0; fi
+if [ ! -f scripts/check.sh ]; then echo "pre-push: scripts/check.sh が無いため push を止めます" >&2; exit 1; fi
+sh scripts/check.sh || { echo "pre-push: チェックが失敗したため push を止めます" >&2; exit 1; }
+exit 0

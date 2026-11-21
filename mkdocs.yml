@@ -1,0 +1,20 @@
+site_name: MuseCal 開発ドキュメント
+docs_dir: .
+theme:
+  name: material
+  language: ja
+nav:
+  - ホーム: README.md
+  - 開発ルール: AGENTS.md
+  - 現在地: STATUS.md
+  - 仕様: REQUIREMENTS.md
+  - 計画: PLAN.md
+  - タスク: TASKS.md
+  - QC証拠ログ: docs/qc.md
+  - 決定記録:
+      - ADR-0001 仕様駆動×エージェント開発: docs/adr/0001-sdd-agent-development.md
+      - ADR-0002 ビルドは GitHub Actions: docs/adr/0002-github-actions-build.md
+      - ADR-0003 帯の色は原色のまま: docs/adr/0003-band-colours-raw-palette.md
+markdown_extensions:
+  - toc:
+      permalink: true

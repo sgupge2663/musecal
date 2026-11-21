@@ -1,0 +1,29 @@
+# tasks: dev-system-v2
+
+- [x] DS-1 changes/ 運用の型を作る（本フォルダが第1号。完了後に archive へ移す手順を AGENTS.md に明記）
+  - 状態： 実装済み（本フォルダ。archive 手順は AGENTS.md 原則2 に明記）
+  - 完了条件: proposal.md と本ファイルが存在し、AGENTS.md の変更手順が changes/ 経由に書き換わっている
+- [x] DS-2 worktree＋prefix ブランチ運用を AGENTS.md と README に明記し、作業ツリーを .worktrees/ 配下に作れることを確認
+  - 状態： 実装済み（規約を AGENTS.md 原則8 と README に明記。作例 worktree claude/example を確認）
+  - 完了条件: 規約が両ファイルにあり、`git worktree list` で作例が1つ確認できる
+- [x] DS-3 gate: .githooks/pre-commit（秘密情報パターンでブロック）と pre-push（scripts/check.sh 実行）を実装し、この clone に core.hooksPath を設定
+  - 状態： 実装済み（pre-commit は検証ケース5件で確認： token.md 拒否・通常 md 許可・削除済み pem 許可・.env.local 拒否・通常 kt 許可。pre-push は check.sh 欠落時に停止）
+  - 完了条件: ダミーの秘密情報ファイルの commit がブロックされることを実演できる。check.sh が assembleDebug を通す
+- [x] DS-4 CI をブランチ push でも発火させ、成果物名にコミット短縮IDを含める
+  - 状態： 実装済み（全ブランチ push で発火、成果物名に短縮 sha。証拠は本変更の push 後の branch run で確認する）
+  - 完了条件: ブランチ push の run で APK 成果物が生成される
+- [x] DS-5 docs/qc.md（固定ケース QC-01〜08＋実施記録の様式）を作成し、v0/v0.1 の既知の検証結果を初回記録として転記（出典明記）
+  - 状態： 実装済み（docs/qc.md に固定ケース QC-01〜10 と記録様式、v0〜v0.2 の初回記録）
+  - 完了条件: qc.md が存在し、記録様式に AI判定と人判定の別欄がある
+- [x] DS-6 STATUS.md（現状＋Must/Should/Could、短く保つ）と docs/adr/0001〜0003 を作成
+  - 状態： 実装済み（STATUS.md と ADR-0001〜0004。README の読む順序に ADR を追加）
+  - 完了条件: 両方が存在し、README の読む順序に組み込まれている
+- [x] DS-7 CLAUDE.md（薄い入口）を作成し、AGENTS.md のファイル役割と番号を整理
+  - 状態： 実装済み（CLAUDE.md は @AGENTS.md＋補足のみ）
+  - 完了条件: CLAUDE.md が @AGENTS.md＋固有数行のみ
+- [x] DS-8 本変更を Codex がレビュー（著者≠検査役）し、指摘を反映してから push する
+  - 状態： 実施済み（Codex レビュー work/review_dev_system_v2.md は受理不可→指摘を修正。さらに cc/cx の監査 work/audit_cc_full.md・audit_cx_full.md の指摘も反映）
+  - 完了条件: レビュー記録が work/ に残り、重大指摘が解消している
+- [x] DS-9 MkDocs によるドキュメントサイト化（ユーザー決定 2026-11-21。Okita 構成と同型： repo が正本、サイトは自動生成の投影の一方向）
+  - 状態： 実装済み（mkdocs.yml・scripts/build_docs.sh・docs workflow。ローカル生成を確認。Pages 有効化は現プランで不可（422）のため公開は保留＝ADR-0004）
+  - 完了条件: mkdocs.yml と docs 用 workflow が入り、ローカルで mkdocs build が通る。Pages の有効化がプラン制約で止まる場合は、その旨をユーザーに報告して判断を仰ぐ（repo の public 化は本人の明示確認なしにしない）

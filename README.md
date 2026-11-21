@@ -1,5 +1,8 @@
 # MuseCal
 
+## 再開時の入口（読む順序）
+1. `AGENTS.md`（開発ルール）→ 2. `STATUS.md`（現在地）→ 3. `TASKS.md` / 進行中なら `changes/<slug>/` → 4. 対象領域の `REQUIREMENTS.md` → 5. 決定の経緯は `docs/adr/`
+
 Business Calendar 2 風の月表示を持つ、個人用の Android カレンダーアプリ。
 Google カレンダーと直接同期し、Android 標準のカレンダー同期を経由しない設計にするのが最終目的。
 
@@ -9,7 +12,7 @@ Google カレンダーと直接同期し、Android 標準のカレンダー同�
 
 ## 開発環境（複数環境から触る前提）
 
-正本はこの GitHub リポジトリ。どの環境で作業しても **作業前に pull、終わったら commit + push** を守る。
+正本はこの GitHub リポジトリ。作業分離（worktree＋prefix ブランチ）と push・統合の担当は `AGENTS.md` 原則8 が正本。
 
 ### VM（メイン開発環境： Muse / Claude Code / Codex）
 - 作業コピー: `~/workspace/calendar-app`
@@ -21,9 +24,10 @@ Google カレンダーと直接同期し、Android 標準のカレンダー同�
 - 必要なもの: JDK 17、Android SDK（Android Studio 導入が手軽）。`local.properties` に `sdk.dir` を自分のパスで作る（Git 管理外）。
 - ビルド: `gradlew.bat assembleDebug`
 
-### GitHub Actions（予定）
-- push するとクラウドで APK をビルドして成果物に置く仕組みを入れる予定（Gradle wrapper のコミット後に追加）。
+### GitHub Actions（稼働中）
+- push（main・ブランチとも）でクラウドが APK をビルドし、成果物に置く（ADR-0002）。
 - ローカルに SDK が無い環境でも、push さえすれば APK が手に入る。
+- clone 直後に `git config core.hooksPath .githooks`（秘密情報ブロック＋push 前チェックを有効化）。
 
 ## 役割分担
 - Claude Code: 設計・実装（判断と文章が要る部分）

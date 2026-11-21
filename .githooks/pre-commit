@@ -1,0 +1,17 @@
+#!/bin/sh
+# 秘密情報の混入を止める（ファイル名＋内容。Markdown も対象、削除は対象外）
+bad_name() {
+  case "$1" in
+    *.pem|*.key|*.jks|*.p12|*.keystore|*id_rsa*|*credentials*|*google-services.json|*client_secret*.json|local.properties) return 0 ;;
+    .env|.env.*) case "$1" in *.env.example) return 1 ;; *) return 0 ;; esac ;;
+  esac
+  return 1
+}
+names=$(git diff --cached --name-only -z --diff-filter=ACMR | tr '\0' '\n')
+for f in $names; do
+  if bad_name "$f"; then echo "pre-commit: 秘密情報らしいファイル名です: $f" >&2; exit 1; fi
+done
+if git diff --cached -U0 --diff-filter=ACMR | grep -E '^\+' | grep -qiE '(ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC )?PRIVATE KEY-----|(api[_-]?key|secret|password)[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"']{8,})'; then
+  echo "pre-commit: 秘密情報らしい代入が含まれています" >&2; exit 1
+fi
+exit 0

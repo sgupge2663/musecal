@@ -4,6 +4,12 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// 署名鍵の固定（タスクA）: 環境変数 MUSECAL_DEBUG_KEYSTORE が既存ファイルを指す場合のみ、
+// 共通デバッグ鍵で debug に署名する。未設定なら従来の自動生成デバッグ署名にフォールバック。
+val sharedDebugKeystorePath = System.getenv("MUSECAL_DEBUG_KEYSTORE")
+val useSharedDebugKeystore =
+    !sharedDebugKeystorePath.isNullOrBlank() && File(sharedDebugKeystorePath).isFile
+
 android {
     namespace = "jp.hayashida.musecal"
     compileSdk = 35
@@ -16,8 +22,24 @@ android {
         versionName = "0.1"
     }
 
+    signingConfigs {
+        if (useSharedDebugKeystore) {
+            create("sharedDebug") {
+                storeFile = File(sharedDebugKeystorePath!!)
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
     buildTypes {
         release { isMinifyEnabled = false }
+        debug {
+            if (useSharedDebugKeystore) {
+                signingConfig = signingConfigs.getByName("sharedDebug")
+            }
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -34,4 +56,5 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
+    testImplementation("junit:junit:4.13.2")
 }

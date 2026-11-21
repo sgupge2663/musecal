@@ -468,7 +468,7 @@ private fun DrawScope.drawWeek(
     }
     // 3) 単日の時間指定予定 ＋ +n
     for (t in r.timed) {
-        drawText(t.text.layout, color = readableOn(t.color, bg[t.col]), topLeft = Offset(t.text.x, t.text.y))
+        drawText(t.text.layout, color = textShade(t.color, bg[t.col]), topLeft = Offset(t.text.x, t.text.y))
     }
     r.more.forEachIndexed { c, t ->
         if (t != null) {

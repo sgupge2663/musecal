@@ -1,0 +1,372 @@
+[
+ {
+  "title": "りゅうぼう昼！！",
+  "start": "2026-11-29T10:30:00+09:00",
+  "end": "2026-11-29T14:00:00+09:00",
+  "allDay": false,
+  "colorId": "11",
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": ""
+ },
+ {
+  "title": "itto",
+  "start": "2026-11-30T18:00:00+09:00",
+  "end": "2026-11-30T21:20:00+09:00",
+  "allDay": false,
+  "colorId": "4",
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": ""
+ },
+ {
+  "title": "AI木曜会_木曜AI講座 by ドン（2026年12月）",
+  "start": "2026-12-03T20:00:00+09:00",
+  "end": "2026-12-03T21:00:00+09:00",
+  "allDay": false,
+  "colorId": null,
+  "calendarName": "AI木曜会",
+  "calendarColor": "#fad165",
+  "location": ""
+ },
+ {
+  "title": "itto",
+  "start": "2026-12-04T18:00:00+09:00",
+  "end": "2026-12-04T21:20:00+09:00",
+  "allDay": false,
+  "colorId": "4",
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": ""
+ },
+ {
+  "title": "VIVANT 映画（家族）",
+  "start": "2026-12-05T17:05:00+09:00",
+  "end": "2026-12-05T19:55:00+09:00",
+  "allDay": false,
+  "colorId": null,
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": "イオンシネマ佐賀大和（イオンモール佐賀大和）"
+ },
+ {
+  "title": "音声処理課題期限",
+  "start": "2026-12-07T12:00:00+09:00",
+  "end": "2026-12-07T13:00:00+09:00",
+  "allDay": false,
+  "colorId": "11",
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": ""
+ },
+ {
+  "title": "音声情報処理 中間テスト",
+  "start": "2026-12-08T10:30:00+09:00",
+  "end": "2026-12-08T12:00:00+09:00",
+  "allDay": false,
+  "colorId": "11",
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": ""
+ },
+ {
+  "title": "itto",
+  "start": "2026-12-08T18:00:00+09:00",
+  "end": "2026-12-08T21:20:00+09:00",
+  "allDay": false,
+  "colorId": "4",
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": ""
+ },
+ {
+  "title": "2限なし",
+  "start": "2026-12-10T12:00:00+09:00",
+  "end": "2026-12-10T13:00:00+09:00",
+  "allDay": false,
+  "colorId": null,
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": ""
+ },
+ {
+  "title": "AI木曜会_木曜AI講座 by 詩月（2026年12月）",
+  "start": "2026-12-10T20:00:00+09:00",
+  "end": "2026-12-10T21:00:00+09:00",
+  "allDay": false,
+  "colorId": null,
+  "calendarName": "AI木曜会",
+  "calendarColor": "#fad165",
+  "location": ""
+ },
+ {
+  "title": "itto 講師開校",
+  "start": "2026-12-11T16:00:00+09:00",
+  "end": "2026-12-11T22:00:00+09:00",
+  "allDay": false,
+  "colorId": "11",
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": ""
+ },
+ {
+  "title": "AI木曜会_第39回バレーしよう会（2026年12月）",
+  "start": "2026-12-13T18:00:00+09:00",
+  "end": "2026-12-13T21:00:00+09:00",
+  "allDay": false,
+  "colorId": null,
+  "calendarName": "AI木曜会",
+  "calendarColor": "#fad165",
+  "location": "SPORTS LABO SHIBAURA"
+ },
+ {
+  "title": "itto",
+  "start": "2026-12-14T18:00:00+09:00",
+  "end": "2026-12-14T21:20:00+09:00",
+  "allDay": false,
+  "colorId": "4",
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": ""
+ },
+ {
+  "title": "B3発表（自己紹介＆研究テーマ）",
+  "start": "2026-12-16",
+  "end": "2026-12-17",
+  "allDay": true,
+  "colorId": "11",
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": ""
+ },
+ {
+  "title": "大掃除 福田けん",
+  "start": "2026-12-16T13:30:00+09:00",
+  "end": "2026-12-16T15:00:00+09:00",
+  "allDay": false,
+  "colorId": "11",
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": "福田研究室（105・106号室）"
+ },
+ {
+  "title": "itto",
+  "start": "2026-12-16T18:00:00+09:00",
+  "end": "2026-12-16T21:20:00+09:00",
+  "allDay": false,
+  "colorId": "4",
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": ""
+ },
+ {
+  "title": "掃除106",
+  "start": "2026-12-17T14:00:00+09:00",
+  "end": "2026-12-17T15:00:00+09:00",
+  "allDay": false,
+  "colorId": "4",
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": ""
+ },
+ {
+  "title": "AI木曜会_木曜AI講座 by ドン（2026年12月）",
+  "start": "2026-12-17T20:00:00+09:00",
+  "end": "2026-12-17T21:00:00+09:00",
+  "allDay": false,
+  "colorId": null,
+  "calendarName": "AI木曜会",
+  "calendarColor": "#fad165",
+  "location": ""
+ },
+ {
+  "title": "産総研",
+  "start": "2026-12-18T09:00:00+09:00",
+  "end": "2026-12-18T12:00:00+09:00",
+  "allDay": false,
+  "colorId": null,
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": ""
+ },
+ {
+  "title": "itto",
+  "start": "2026-12-18T18:00:00+09:00",
+  "end": "2026-12-18T21:20:00+09:00",
+  "allDay": false,
+  "colorId": "4",
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": ""
+ },
+ {
+  "title": "AI木曜会_みんなのAI活用事例発表会（LT会）（2026年12月）",
+  "start": "2026-12-19T09:00:00+09:00",
+  "end": "2026-12-19T11:00:00+09:00",
+  "allDay": false,
+  "colorId": null,
+  "calendarName": "AI木曜会",
+  "calendarColor": "#fad165",
+  "location": ""
+ },
+ {
+  "title": "AI木曜会_第40回バレーしよう会＋忘年会（2026年12月）",
+  "start": "2026-12-19T11:00:00+09:00",
+  "end": "2026-12-19T14:00:00+09:00",
+  "allDay": false,
+  "colorId": null,
+  "calendarName": "AI木曜会",
+  "calendarColor": "#fad165",
+  "location": "SPORTS LABO SHIBAURA"
+ },
+ {
+  "title": "AI木曜会_第4回札幌オフ会（2026年12月）",
+  "start": "2026-12-19T15:00:00+09:00",
+  "end": "2026-12-19T20:00:00+09:00",
+  "allDay": false,
+  "colorId": null,
+  "calendarName": "AI木曜会",
+  "calendarColor": "#fad165",
+  "location": ""
+ },
+ {
+  "title": "クレカ引き落とし",
+  "start": "2026-12-20",
+  "end": "2026-12-21",
+  "allDay": true,
+  "colorId": "6",
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": ""
+ },
+ {
+  "title": "AI木曜会_冬のリレーマラソン",
+  "start": "2026-12-20T12:00:00+09:00",
+  "end": "2026-12-20T19:00:00+09:00",
+  "allDay": false,
+  "colorId": null,
+  "calendarName": "AI木曜会",
+  "calendarColor": "#fad165",
+  "location": ""
+ },
+ {
+  "title": "itto遅",
+  "start": "2026-12-21T18:00:00+09:00",
+  "end": "2026-12-21T21:40:00+09:00",
+  "allDay": false,
+  "colorId": "4",
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": ""
+ },
+ {
+  "title": "itto遅",
+  "start": "2026-12-23T18:00:00+09:00",
+  "end": "2026-12-23T21:40:00+09:00",
+  "allDay": false,
+  "colorId": "4",
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": ""
+ },
+ {
+  "title": "掃除106",
+  "start": "2026-12-24T14:00:00+09:00",
+  "end": "2026-12-24T15:00:00+09:00",
+  "allDay": false,
+  "colorId": "4",
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": ""
+ },
+ {
+  "title": "AI木曜会_木曜AI講座 by 詩月（2026年12月）",
+  "start": "2026-12-24T20:00:00+09:00",
+  "end": "2026-12-24T21:00:00+09:00",
+  "allDay": false,
+  "colorId": null,
+  "calendarName": "AI木曜会",
+  "calendarColor": "#fad165",
+  "location": ""
+ },
+ {
+  "title": "クリスマス",
+  "start": "2026-12-25",
+  "end": "2026-12-26",
+  "allDay": true,
+  "colorId": null,
+  "calendarName": "日本の祝日",
+  "calendarColor": "#9a9cff",
+  "location": ""
+ },
+ {
+  "title": "itto遅",
+  "start": "2026-12-26T18:00:00+09:00",
+  "end": "2026-12-26T21:40:00+09:00",
+  "allDay": false,
+  "colorId": "4",
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": ""
+ },
+ {
+  "title": "AI木曜会_読書共有会（2026年12月）",
+  "start": "2026-12-27T15:00:00+09:00",
+  "end": "2026-12-27T17:00:00+09:00",
+  "allDay": false,
+  "colorId": null,
+  "calendarName": "AI木曜会",
+  "calendarColor": "#fad165",
+  "location": ""
+ },
+ {
+  "title": "帰省",
+  "start": "2026-12-30",
+  "end": "2027-01-03",
+  "allDay": true,
+  "colorId": "5",
+  "calendarName": "メイン",
+  "calendarColor": "#9fe1e7",
+  "location": ""
+ },
+ {
+  "title": "大晦日",
+  "start": "2026-12-31",
+  "end": "2027-01-01",
+  "allDay": true,
+  "colorId": null,
+  "calendarName": "日本の祝日",
+  "calendarColor": "#9a9cff",
+  "location": ""
+ },
+ {
+  "title": "元日",
+  "start": "2027-01-01",
+  "end": "2027-01-02",
+  "allDay": true,
+  "colorId": null,
+  "calendarName": "日本の祝日",
+  "calendarColor": "#9a9cff",
+  "location": ""
+ },
+ {
+  "title": "銀行休業日",
+  "start": "2027-01-02",
+  "end": "2027-01-03",
+  "allDay": true,
+  "colorId": null,
+  "calendarName": "日本の祝日",
+  "calendarColor": "#9a9cff",
+  "location": ""
+ },
+ {
+  "title": "銀行休業日",
+  "start": "2027-01-03",
+  "end": "2027-01-04",
+  "allDay": true,
+  "colorId": null,
+  "calendarName": "日本の祝日",
+  "calendarColor": "#9a9cff",
+  "location": ""
+ }
+]

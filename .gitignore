@@ -1,0 +1,17 @@
+# VM-local toolchain & sandbox proxy helpers (contain local paths / proxy auth — never commit)
+toolchain/
+scripts/
+local.properties
+work/
+
+# Build outputs
+.gradle/
+build/
+app/build/
+*.apk
+*.aab
+
+# IDE
+.idea/
+*.iml
+.DS_Store

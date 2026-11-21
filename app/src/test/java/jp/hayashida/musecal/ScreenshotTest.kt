@@ -53,7 +53,12 @@ class ScreenshotTest {
         val todayState = mutableStateOf(fixedToday)
         composeRule.setContent {
             MaterialTheme(colorScheme = lightColorScheme()) {
-                MuseCalApp(events, todayState)
+                // V1-1 統合後のシグネチャ: サインイン済み前提の固定ダミーで描画する
+                MuseCalApp(
+                    events, todayState,
+                    accountEmail = "screenshot@example.jp",
+                    onSignOut = {},
+                )
             }
         }
         composeRule.waitForIdle()
@@ -63,6 +68,20 @@ class ScreenshotTest {
     fun monthView_dec2026() {
         setAppContent()
         composeRule.onRoot().captureRoboImage(File("src/test/screenshots/month_view.png"))
+    }
+
+    /** EM-1 3画面目: 未ログイン案内画面（V1-1 の SignInScreen、サインイン前の初期状態）。 */
+    @Test
+    fun signInGuide_signedOut() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val auth = CalendarAuth(context)
+        composeRule.setContent {
+            MaterialTheme(colorScheme = lightColorScheme()) {
+                SignInScreen(auth) {}
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onRoot().captureRoboImage(File("src/test/screenshots/sign_in_guide.png"))
     }
 
     @Test

@@ -252,8 +252,9 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
 }
 
 /** V1-1 / V1-5: 未サインイン時の案内画面。アプリ名・説明・「Google でログイン」ボタンだけを出す。 */
+/* internal: EM-1 のスクショテスト（ScreenshotTest）から直接描画して固定するため */
 @Composable
-private fun SignInScreen(auth: CalendarAuth, onSignedIn: () -> Unit) {
+internal fun SignInScreen(auth: CalendarAuth, onSignedIn: () -> Unit) {
     val context = LocalContext.current
     val activity = context as? Activity
     val scope = rememberCoroutineScope()

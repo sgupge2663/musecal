@@ -71,13 +71,25 @@ android {
 
 // EM-1: Roborazzi はプロパティ未指定だとキャプチャが無効（検証されない）ため、
 // 通常のテスト実行（check.sh / CI の testDebugUnitTest）では verify を既定にする。
-// record / compare の各タスク実行時はそちらを優先する（プラグインがプロパティを設定する）。
+// 対象は Roborazzi がスクショを実行する単体テストタスク（test<Variant>UnitTest）だけに
+// 限定する（Codex レビュー低指摘への対応: 以前は「要求タスク名に record/compare を含むと
+// 全 Test タスクの verify を外す」判定で、無関係な Test タスクにも影響していた）。
+// record / compare の実行時はそちらを優先する: 要求された Roborazzi タスクが
+// そのタスクと同じ variant（Debug/Release）向け、または variant なしの集約タスクの
+// ときだけ、このタスクへの verify 強制を外す（プラグインがプロパティを設定する）。
 tasks.withType<Test>().configureEach {
-    val requested = gradle.startParameter.taskNames.joinToString(" ")
-    if (!requested.contains("record", ignoreCase = true) &&
-        !requested.contains("compare", ignoreCase = true)
-    ) {
-        systemProperty("roborazzi.test.verify", "true")
+    val variant = Regex("""^test(\w+)UnitTest$""").matchEntire(name)?.groupValues?.get(1)
+    if (variant != null) {
+        val requestedNames = gradle.startParameter.taskNames.map { it.substringAfterLast(':') }
+        val recordingForThisVariant = requestedNames.any { requested ->
+            val lower = requested.lowercase()
+            (lower.startsWith("recordroborazzi") || lower.startsWith("compareroborazzi")) &&
+                (requested.endsWith(variant, ignoreCase = true) ||
+                    requested.endsWith("Roborazzi", ignoreCase = true))
+        }
+        if (!recordingForThisVariant) {
+            systemProperty("roborazzi.test.verify", "true")
+        }
     }
 }
 

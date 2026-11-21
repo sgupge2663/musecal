@@ -29,16 +29,17 @@
 JVM スクショテスト（Roborazzi + Robolectric、エミュレータなし）で主要画面の描画を固定する。Phase 1（案D）の仕組みであり、操作のテストではない（操作は Phase 2 の EM-2）。
 
 - 実装: `app/src/test/java/jp/hayashida/musecal/ScreenshotTest.kt`
-  - `month_view.png`: 月表示（サンプルデータ、2026年12月、「今日」は 2026-12-16 に固定）
+  - `month_view.png`: 月表示（サンプルデータ、2026年12月、「今日」は 2026-12-16 に固定。V1-1 統合後はアカウント帯つき。テスト用メールアドレスは固定ダミー）
   - `day_popup_dec16.png`: 12月16日のセルを実際にタップして開いた日ポップアップ
+  - `sign_in_guide.png`: 未ログイン案内画面（V1-1 の SignInScreen を未サインイン状態で描画）
   - 前提は固定する： 画面 w360dp-h800dp-xxhdpi（1080x2400px）、タイムゾーン Asia/Tokyo、SDK 35
 - ベースラインの置き場: `app/src/test/screenshots/`（git 管理する。ここが正本）
-- 検証（通常運用）: `scripts/check.sh` と CI の `testDebugUnitTest` が verify モードで比較し、差分があればテスト失敗になる。失敗時は `app/build/outputs/roborazzi/` に `<名前>_actual.png`（今回の描画）と `<名前>_compare.png`（Reference/Diff/New の比較画像）が出るので、まずそれを見て「意図した変更か、崩れか」を判定する
+- 検証（通常運用）: `scripts/check.sh` と CI の `testDebugUnitTest` が verify モードで比較し、差分があればテスト失敗になる。失敗時は `app/build/outputs/roborazzi/` に `<名前>_actual.png`（今回の描画）と `<名前>_compare.png`（Reference/Diff/New の比較画像）が出るので、まずそれを見て「意図した変更か、崩れか」を判定する。CI では同ディレクトリが成果物 `roborazzi-outputs-<sha>` として常時（失敗時も）アップロードされる
 - ベースラインの更新（意図した見た目の変更のときだけ）:
   1. `./gradlew recordRoborazziDebug` を実行する
   2. `app/src/test/screenshots/` の差分を目視確認してから、コード変更と一緒に commit する
   3. 意図しない差分でベースラインを更新して誤魔化さない。崩れは実装側を直す
-- 注意: Roborazzi はプロパティ未指定だとキャプチャ自体が無効になるため、`app/build.gradle.kts` で通常実行時は `roborazzi.test.verify=true` を既定にしている（record / compare 実行時はそちらが優先）。この設定を消すと検証が静かに無効化されるので消さないこと
+- 注意: Roborazzi はプロパティ未指定だとキャプチャ自体が無効になるため、`app/build.gradle.kts` で通常実行時は `roborazzi.test.verify=true` を既定にしている。この設定を消すと検証が静かに無効化されるので消さないこと。対象は Roborazzi が実行される単体テストタスク（test&lt;Variant&gt;UnitTest）だけに限定し、verify 強制を外すのは「そのタスクと同じ variant の record / compare Roborazzi タスク（または variant なしの集約タスク）が要求されたとき」だけ（Codex レビューの低指摘への対応。以前は要求タスク名に record/compare を含むと全 Test タスクの verify が外れていた）
 
 ## 実施記録
 
@@ -91,3 +92,11 @@ JVM スクショテスト（Roborazzi + Robolectric、エミュレータなし�
 - 内容: (1) CalendarAuthTest を強化。従来は scope 定数（CALENDAR_READONLY_SCOPE）の文字列しか検証しておらず、認可要求のリストに別 scope が混入しても通過する状態だった。要求 scope の集合を `CalendarAuth.REQUESTED_SCOPE_URIS` に集約し（認可要求は必ずこの一覧から組み立てる）、テストがその一覧そのものについて「calendar.readonly 1 件のみ」であることを検証するようにした。なお Scope オブジェクトの生成は GMS の Preconditions 経由で android.text.TextUtils を呼ぶため JVM 単体テストでは実行できず、一覧から Scope への変換（1 対 1 のラップ）はテスト対象外。(2) Google Cloud プロジェクト「musecal」の Web クライアント ID を `R.string.google_web_client_id` に実値差し替え（クライアント ID は公開情報。シークレットは不使用・未記録）
 - 証拠: `scripts/check.sh` 成功（assembleDebug / testDebugUnitTest / lintDebug すべて OK）。単体テスト 8 件全通過（TextShadeTest 6 件＋CalendarAuthTest 2 件）
 - AI判定 / 人判定: AI判定=レビュー条件対応済み / 実機検証=**未実施**（ユーザーの実機でログイン試行待ち）。V1-1 の完了条件（実機でログインできる・再起動後も保持される）は未確認のため、V1-1 は未完了のまま
+
+### 2026-11-21 EM-1 条件対応・3画面目追加（ブランチ claude/em1-screenshot-tests）
+- 経路: Codex レビュー（条件付き受理可）への対応を Claude Code が実施。現行 main（1614531、V1-1 統合済み）を本ブランチへマージ（マージコミット 72e5ec1）。競合は本ファイルの実施記録セクションのみで、両側の記録（EM-1 基盤と V1-1 の2件）を意味を保って併記して解消。changes/2026-11-21-emulator-verification/ はブランチ側の追跡版を正本とした
+- 3画面目（未ログイン案内画面）: ScreenshotTest に `signInGuide_signedOut` を追加し、V1-1 の SignInScreen を未サインイン状態で描画。ベースライン `sign_in_guide.png` を新規固定し目視確認した（黒ヘッダー＋アプリ名＋説明3行＋「Google でログイン」ボタン。サンプル予定は出ていない）。あわせて月表示は V1-1 のアカウント帯（テスト用固定ダミーのメールアドレス＋サインアウト）を反映して `month_view.png` を再記録し目視確認。日ポップアップのベースラインは不変。SignInScreen は本テストから参照するため private → internal に変更（MainActivity.kt）
+- CI 成果物: `.github/workflows/build.yml` に `app/build/outputs/roborazzi/` を `if: always()` でアップロードする step を追加（成果物名 `roborazzi-outputs-<sha>`、permissions の変更なし。EM-2 に先立つ小追加として Muse の指示・承認済み Phase 2 の範囲内）
+- verify 絞り込み（Codex 低指摘）: `app/build.gradle.kts` の verify 強制を、Roborazzi が実行される単体テストタスク（test&lt;Variant&gt;UnitTest）に限定し、強制を外す条件を「同じ variant の record / compare Roborazzi タスク（または集約タスク）が要求されたとき」だけに変更。実証: 絞り込み後も通常の `testDebugUnitTest` で試験変更（TodayBg #FFF4C2 → #00FF00）を与えると monthView_dec2026 が FAILED になり、`month_view_actual.png` / `month_view_compare.png` が出力されることを確認（試験変更は戻し済み）。recordRoborazziDebug も正常に記録できることを確認済み
+- 証拠: `recordRoborazziDebug` 成功（ベースライン3枚が決定）。`scripts/check.sh` とブランチ CI の結果は本記録の追記後に確定し、コミットメッセージと Muse への報告で参照する
+- AI判定 / 人判定: AI判定=EM-1 完了条件（3画面）を満たす / 人判定=対象外（新規の見た目変更ではなく、既存画面の固定追加のため）

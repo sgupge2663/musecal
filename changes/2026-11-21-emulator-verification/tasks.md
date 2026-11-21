@@ -6,7 +6,7 @@
   - 検証方法: わざと色を1つ変えた試験変更で、差分として検出されることを確認し QC に記録
   - 完了記録（2026-11-21）: 3画面のベースラインを `app/src/test/screenshots/` に固定し、運用手順と実証記録は docs/qc.md。当初2画面で先行し、未ログイン案内画面は V1-1（claude/v11-signin、当時は未統合）が main（1614531）に統合された後、本ブランチへ main をマージして3画面目（sign_in_guide.png）を追加し完了とした。あわせて Codex レビュー条件対応として、CI への roborazzi 出力の常時アップロード追加と、verify 強制の対象絞り込みを実施
 
-- [x] EM-2 CI エミュレータジョブ（Phase 2 / 案C）— 完了（2026-11-21、完了条件を CI で実証し、成果物を Muse が確認済み。ブランチ claude/em2-ci-emulator、main へは未統合。別エージェントのコードレビュー〔原則4〕は未実施）
+- [x] EM-2 CI エミュレータジョブ（Phase 2 / 案C）— 完了（2026-11-22、main へ統合済み 8972c8a。Codex 確認レビューで受理可）
   - 内容: GitHub Actions に workflow_dispatch のジョブを追加。Ubuntu ランナー＋KVM でエミュレータを起動し、デバッグ APK をインストール。主要画面の撮影に加え、Compose UI Test 等のシナリオで実際に操作する（タブ切替、日タップ→ポップアップ、月表示のスクロール、未ログイン画面の表示確認）。各ステップのスクショと画面構造ダンプを成果物に上げる
   - 完了条件: 手動実行で操作シナリオまで含めて成功し、PNG と画面構造が成果物から取得できる。サインインは未ログイン状態の確認まで（実アカウントは使わない）
   - 検証方法: 実行ログと成果物を Muse が確認。所要時間も記録する
@@ -31,6 +31,10 @@
     - CI: workflow_dispatch run 44942878156（682e28e）成功。ジョブ 4分14秒（19:48:16〜19:52:30 UTC）、エミュレータ〜シナリオ 122 秒。ログに `required: 31 files, ok: 31`・`evidence: PASS`・`OK (2 tests)`。GITHUB_TOKEN の権限表示は Contents: read / Metadata: read のみ（以前の表示にあった Packages: read も無くなり、狭まった）
     - 成果物 `emulator-evidence-682e28e`: 35ファイル（以前の34＋evidence_check.txt）、空ファイル0、PNG 9件はすべて正しいシグネチャ、XML 9件、semantics 8件。判定値（notes.txt）は前回と同じ（3.6% / 0.0% / 23.7%）
     - ローカル check.sh: Gradle のロック競合は解けていたが、testDebugUnitTest の ScreenshotTest 3件が「Robolectric の android-all-instrumented を取得できない」で失敗（VM の中継プロキシ auth_relay_proxy が停止中で 127.0.0.1:18080 に繋がらないため。今回の変更は YAML とシェルだけでアプリのコードに触れていない）。プロキシは今回の作業範囲外なので起動せず、push は SKIP_CHECK=1 とし、CI を gate にした
+  - 確認レビュー（2026-11-22、Codex、対象 37ca89c）: 判定は受理可、新規指摘なし（記録の正本は work/em2-37ca89c-review.md）。GITHUB_TOKEN の権限は Contents: read / Metadata: read のみ
+  - 統合記録（2026-11-22、Muse）: ブランチ CI 成功（Build APK run 44943340130＝37ca89c、Emulator scenario run 44942878156）を確認してから、main へ merge（8972c8a）→ push → `branch_ops.sh prune --dry-run` → `prune`（ブランチ claude/em2-ci-emulator のローカル＋リモートと worktree を削除）→ `audit` クリーン（exit 0）。統合時の push は一度 pre-push の check.sh で止まった（原因: `generateDebugAndroidTestLintModel` が EM-2 の androidTest 依存（androidx.test:runner 1.6.2 等）を初めて取得する際に PKIX 失敗。ランタイム再起動で egress CA が回転し、toolchain/truststore.jks の hatch-egress-ca（2026-11-21 追加）が旧鍵のままだった。現行 CA（/usr/local/share/ca-certificates/hatch-egress-ca.crt、SHA-256 C5:B1:0D:0B…）を keytool で入れ直して check.sh 成功、push 完了。教訓は ~/AGENTS.md に記録）
+  - Firebase Test Lab はやらない（ユーザー決定 2026-11-22）: 仮想デバイスは EM-2 の CI エミュレータと重複し、実機の手触りは測れない。物理デバイスのスモークチェックだけが利点だが、サービスアカウント鍵（新規 Secret）の管理負担と Spark 固定・実行の遅さを考えると効果が薄い。無料枠（仮想10回/日・物理5回/日）は使わない
+  - 未確認のまま残るもの: ユーザーの見た目の最終判定（原則5）。実アプリの月表示操作（デバッグ用ダミーサインイン等の仕様追加が必要かは判断待ち）。logcat 公開の件は Codex が秘密値なしを確認済み（未知形式までの完全保証ではない、と留保つき）
   - 判断してほしいこと: (1) 月表示の操作は実アプリ（MainActivity）ではなく MuseCalApp を直接描画した画面で行っている（未サインインでは月表示に入れないため）。実アプリの月表示まで操作したい場合は、デバッグ限定のダミーサインイン入口など仕様の追加が要る。(2) logcat.txt（約2.4MB）も成果物に含めている。公開リポジトリの成果物は誰でも見られるが、中身はエミュレータとサンプル予定のログのみ
 
 - [ ] EM-3 QC への組み込み

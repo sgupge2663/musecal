@@ -25,11 +25,11 @@
     - **未確認（実機確認は V1-3 後）**: 完了条件「実機で3カレンダーが正しく切り替わり、各タブにそのカレンダーの予定だけが出る」は、V1-3 の実データ版でまとめて実機確認する。実 API からの calendarList 取得も実機では未確認
   - 完了記録（2026-11-22）: main へ統合済み（d8cacb6。ブランチ CI run 44915206193・44916406090 の成功を確認してから統合）。Codex レビュー条件1（競合）は対応済みで、Codex の再確認でもクリア判定。条件2（実機証拠とユーザー判定）は V1-3 後の実データ版でまとめて行う
 
-- [ ] V1-3 予定の取得と描画への接続
+- [x] V1-3 予定の取得と描画への接続 — main 統合済み（2026-11-22、4206de3）。完了条件の実機分は未確認のまま、実データ版 APK でまとめて確認する
   - 内容: 表示ウィンドウ（6週）の events.list 取得（singleEvents=true）。既存モデルへ変換し、サンプルデータと差し替える。colorId→パレット変換を含む
   - 完了条件: 実機の月表示が Web 版 Google Calendar と一致する（件数・タイトル・色・終日/時間の別）
   - 検証方法: 2026年12月で照合し、差異があれば QC に記録。正解データは `hatch_gws_cli calendar events list`（Muse のコネクタ CLI、アプリと同じ API・同じ形の JSON）の出力を使う。calendarList の実物（2026-11-21 取得）: メイン=kou1995yurin530@gmail.com (#9fe1e7)、AI木曜会=mokuyoukai.ai@gmail.com (#fad165)、日本の祝日=ja.japanese#holiday@group.v.calendar.google.com (#9a9cff) — タブの色線・帯色の対応はこれが正本
-  - 状態（2026-11-21、Claude Code）: 実装済み（ブランチ `claude/v13-events`、worktree `.worktrees/claude-v13`）。単体テストと check.sh・ブランチ CI まで。Codex レビュー（e369ce3）不可 → 指摘3件＋証拠1件を修正済み、再レビュー待ち。実機照合は Muse が実データ版 APK でまとめて行う（未確認）
+  - 状態（2026-11-21、Claude Code）: 実装済み（ブランチ `claude/v13-events`、worktree `.worktrees/claude-v13`）。単体テストと check.sh・ブランチ CI まで。Codex レビュー（e369ce3）不可 → 指摘3件＋証拠1件を修正済み。再レビュー（951c042）不可 → 残り1件（終日予定の除去判定にカレンダー TZ を反映）を修正済み。再レビュー（4206de3）で受理可（2026-11-22）→ main 統合済み（4206de3）。実機照合は Muse が実データ版 APK でまとめて行う（未確認）
     - 取得（`GoogleEvents.kt` の EventsApi）: タブに対応づいた各カレンダーごとに Calendar API v3 `calendars/{id}/events` を REST で直接取得（singleEvents=true、orderBy=startTime、maxResults=2500、pageToken で全ページ、timeMin/timeMax は端末 TZ の 0:00）。トークンは取得のたびに CalendarAuth.authorizeCalendar() で取り直し、保存しない。追加ライブラリなし。calendarId はパス用にエンコード（祝日の `#`・`@`）
     - ウィンドウ（windowToFetch / EventWindowStore）: 取得単位は6週（日曜始まり42日）。月表示のスクロールが止まるたびに（同じ週でも）表示中の週を受け取り、取得済み・取得中の週からはみ出した最初の週から6週を取る（初期表示の 2026年12月は 11/29〜1/9 の1回）。在メモリ保持のみ（永続キャッシュは V1-4）。保存するのは全カレンダー・全ページが揃った完全な応答だけで、新しい窓を保存するときは、以前の窓の予定のうち新しい窓の範囲にかかるものを捨てる（削除・移動された予定を残さない）。全ページ取得で、上限（50ページ）に届いてもトークンが残る・同じトークンが繰り返す場合は失敗扱い
     - 変換（googleEventToCalEvent）: start.date＝終日（end.date は排他的）、start.dateTime＝時間指定（端末 TZ へ変換、0:00 ちょうど終わりは前日まで＝従来のサンプルと同じ規則）。status=cancelled は出さない。summary が無い予定は空文字（装飾しない）。calendarId・calendarName・カレンダー色はタブから付与。colorId はそのまま持たせ、既存の baseColor が標準11色（GoogleEventColors）へ、無い／パレット外はカレンダーの backgroundColor。帯はパレット色そのまま、時間指定の文字色は既存の textShade（T-108）を通る（描画側は変更なし）
@@ -52,6 +52,8 @@
       - 陰性対照: 除去判定を一時的に旧来の表示日判定へ戻して GoogleEventsTest を実行 → (2)(3)(4) の3件だけが失敗（28件中3件）。戻した後のソースで check.sh を実施
       - 検証: `scripts/check.sh` 成功（assembleDebug / testDebugUnitTest / lintDebug）。単体テスト 56件（失敗 0、省略 1＝RealEventsDumpTest）、Roborazzi ベースライン3画面に差分なし。修正コミット 628ab08 のブランチ CI（Build APK）成功: run 44945680277（https://github.com/sgupge2663/musecal/actions/runs/44945680277）
       - 未確認: 実 API（カレンダー TZ が端末と異なる実カレンダー）での挙動は未確認（静的な仕様との照合と単体テストのみ）。実機照合はユーザーの最終チェックの範囲
+    - 再レビュー（2026-11-22、Codex、対象 4206de3）: 判定は「受理可」、新規指摘なし（記録の正本は work/v13/codex-review-4206de3.md）
+    - 統合記録（2026-11-22、Muse）: ブランチ CI 成功（run 44945680277＝628ab08、run 44946045295＝4206de3 記録コミット）を確認してから、main へ fast-forward（4206de3）→ push（pre-push の check.sh OK）→ `branch_ops.sh prune --dry-run` → `prune`（ブランチ claude/v13-events のローカル＋リモートと worktree を削除）→ `audit` クリーン（exit 0）
 
 - [ ] V1-4 キャッシュと更新
   - 内容: 取得結果を端末にキャッシュ。起動時はキャッシュ即表示→裏で再取得。手動リフレッシュ導線。取得失敗時はキャッシュ表示＋鮮度（最終取得時刻）の表示

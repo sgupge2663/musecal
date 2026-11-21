@@ -6,6 +6,10 @@
 # Secrets は使わない（デバッグ署名は自動生成のまま。エミュレータに入れるだけなので共通鍵は不要）。
 name: Emulator scenario
 on:
+  # 一時的（EM-2 検証用）: workflow_dispatch は既定ブランチに無いワークフローをファイル名で起動できないため、
+  # このブランチへの push で1回走らせてワークフロー ID を登録させる。次のコミットで外す
+  push:
+    branches: [claude/em2-ci-emulator]
   workflow_dispatch:
     inputs:
       api-level:

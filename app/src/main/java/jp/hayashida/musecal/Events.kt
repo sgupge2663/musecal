@@ -38,6 +38,8 @@ data class CalEvent(
     val calendarName: String,
     val calendarColor: Color,
     val location: String,
+    /** Google Calendar の event id（V1-3。重複除去に使う）。同梱サンプルには無い。 */
+    val eventId: String? = null,
 ) {
     /** 終日、または日をまたぐ時間指定 → 色帯で描く。 */
     val isBar: Boolean get() = allDay || endDateInclusive > startDate
@@ -56,6 +58,15 @@ private fun parseHex(hex: String?, fallback: Color): Color =
         fallback
     }
 
+/** 時間指定予定の表示上の終了日。0:00 ちょうどに終わる予定は前日までとみなす。 */
+fun timedEndDate(zs: ZonedDateTime, ze: ZonedDateTime): LocalDate =
+    if (ze.toLocalTime() == LocalTime.MIDNIGHT && ze.toLocalDate() > zs.toLocalDate())
+        ze.toLocalDate().minusDays(1) else ze.toLocalDate()
+
+/**
+ * 同梱サンプル（assets/sample_events.json）を読む。V1-3 以降は本番の表示経路では使わず、
+ * スクショテスト（ScreenshotTest）の fixture としてだけ使う。
+ */
 fun loadEvents(context: Context, zone: ZoneId = ZoneId.systemDefault()): List<CalEvent> {
     val text = context.assets.open("sample_events.json").bufferedReader(Charsets.UTF_8).use { it.readText() }
     val arr = JSONArray(text)
@@ -87,10 +98,7 @@ fun loadEvents(context: Context, zone: ZoneId = ZoneId.systemDefault()): List<Ca
         } else {
             val zs = OffsetDateTime.parse(o.getString("start")).atZoneSameInstant(zone)
             val ze = OffsetDateTime.parse(o.getString("end")).atZoneSameInstant(zone)
-            // 0:00 ちょうどに終わる予定は前日までとみなす
-            val endDate = if (ze.toLocalTime() == LocalTime.MIDNIGHT && ze.toLocalDate() > zs.toLocalDate())
-                ze.toLocalDate().minusDays(1) else ze.toLocalDate()
-            common(zs.toLocalDate(), endDate, zs, ze)
+            common(zs.toLocalDate(), timedEndDate(zs, ze), zs, ze)
         }
     }
 }

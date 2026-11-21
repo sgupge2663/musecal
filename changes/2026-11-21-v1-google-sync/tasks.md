@@ -29,6 +29,16 @@
   - 内容: 表示ウィンドウ（6週）の events.list 取得（singleEvents=true）。既存モデルへ変換し、サンプルデータと差し替える。colorId→パレット変換を含む
   - 完了条件: 実機の月表示が Web 版 Google Calendar と一致する（件数・タイトル・色・終日/時間の別）
   - 検証方法: 2026年12月で照合し、差異があれば QC に記録。正解データは `hatch_gws_cli calendar events list`（Muse のコネクタ CLI、アプリと同じ API・同じ形の JSON）の出力を使う。calendarList の実物（2026-11-21 取得）: メイン=kou1995yurin530@gmail.com (#9fe1e7)、AI木曜会=mokuyoukai.ai@gmail.com (#fad165)、日本の祝日=ja.japanese#holiday@group.v.calendar.google.com (#9a9cff) — タブの色線・帯色の対応はこれが正本
+  - 状態（2026-11-21、Claude Code）: 実装済み（ブランチ `claude/v13-events`、worktree `.worktrees/claude-v13`）。Codex レビュー待ち、実機照合待ち
+    - 取得（`GoogleEvents.kt` の EventsApi）: タブに対応づいた各カレンダーについて Calendar API v3 `calendars/{id}/events` を REST で直接取得（singleEvents=true、orderBy=startTime、maxResults=2500、pageToken で全ページ）。取得のたびに CalendarAuth.authorizeCalendar() でトークンを得て、保存しない。追加ライブラリなし、scope は calendar.readonly のまま
+    - ウィンドウ: 取得単位は6週（日曜から42日、timeMin/timeMax は端末タイムゾーンの0時）。スクロールが止まった時点の表示中の週が取得済み・取得中の範囲からはみ出したら、はみ出した最初の週から6週分を取る（`windowToFetch`）。在メモリ保持（`EventWindowStore`。ウィンドウが重なったときは calendarId＋event id で重複を除き、後に取得したほうを残す）。永続キャッシュはしない（V1-4）
+    - 変換（`googleEventToCalEvent`）: start.date → 終日（end.date は排他的）、start.dateTime → 時間指定（端末タイムゾーンへ。0:00 ちょうどに終わる予定は前日まで＝既存の扱い）。タイトルは summary をそのまま使い、summary が無ければ空文字（装飾しない）。status=cancelled は出さない。calendarId・カレンダー名・カレンダー色はタブから付ける。colorId はそのまま持たせ、既存の `CalEvent.baseColor` が標準11色（`GoogleEventColors`）へ変換。colorId が無い・パレット外ならカレンダーの backgroundColor。帯はパレット色そのまま、時間指定の文字色は既存の textShade（T-108）の経路のまま
+    - 差し替え: サインイン済みの月表示は取得した予定だけを出す（`loadEvents`＝同梱サンプルは本番経路から外し、ScreenshotTest の fixture としてだけ残す）。取得前・取得失敗時は空。失敗はトーストで理由を出す。1つのカレンダーでも失敗したらそのウィンドウは反映しない（一部だけ出して「予定が無い」と見せないため）
+    - 競合対策: 予定の取得も V1-2 の AccountRequestGate の札で判定し、さらにアカウント・タブが変わるたびに store の世代を進める。札が古い・世代が違う結果は成功・失敗とも捨てる
+    - 検証: `scripts/check.sh` 成功（assembleDebug / testDebugUnitTest / lintDebug）。単体テスト 44件（失敗 0、省略 1＝下記の照合用テストは環境変数が無いと省略）。うち GoogleEventsTest 16件: 時間指定/終日の別（UTC 表記の変換、日またぎ、終日の排他的 end）、colorId の有無とパレット外、textShade への受け渡し、summary 欠落、複数カレンダーの calendarId とタブのフィルタ、singleEvents で展開済みの繰り返し（時間指定・終日）と cancelled の除外、pageToken、calendarId のパスエンコード、ウィンドウの判定、store の重複除去と reset。fixture は実 API と同じ形（タイトル・id は架空）。Roborazzi 3画面は verify でベースライン一致（PNG に差分なし）
+    - 実データとの変換照合（実機ではなく変換のみ）: 2026-11-21 に `hatch_gws_cli calendar events list` で 2026-11-29〜2027-01-10（12月表示の6週）の3カレンダーを取得し、`RealEventsDumpTest`（MUSECAL_REAL_EVENTS_DIR 指定時のみ動く）でアプリの変換結果を TSV に出力、Python で独立に作った期待値と diff → 37件（メイン 22・AI木曜会 10・日本の祝日 5、時間指定 29・終日 8）すべて一致（カレンダー・開始日・終了日・終日/時間・開始時刻・タイトル・帯色）。実データは個人の予定なのでリポジトリに置かず work/v13/ に置いた
+    - **未確認（実機でしか確認できない）**: 完了条件「実機の月表示が Web 版 Google Calendar と一致する」（Muse が実データ版 APK で照合）。実 API への実機からの events.list 呼び出し（トークン・ネットワーク・HTTP エラー時のトースト）。スクロールに応じた取り直しの動作と操作感。アカウント切替時に前アカウントの予定が混ざらないこと（単体テストは札と世代の判定のみ）
+    - 判断してほしいこと: (1) summary が無い予定は空文字で出している（Web 版は「(タイトルなし)」と表示する。完了条件の「タイトル一致」をどちらで判定するか）。(2) 1カレンダーでも失敗したらそのウィンドウ全体を出さない方針でよいか。(3) eventType（workingLocation・outOfOffice 等）は絞り込まず API が返すものを出している（12月の実データは全件 default）
 
 - [ ] V1-4 キャッシュと更新
   - 内容: 取得結果を端末にキャッシュ。起動時はキャッシュ即表示→裏で再取得。手動リフレッシュ導線。取得失敗時はキャッシュ表示＋鮮度（最終取得時刻）の表示

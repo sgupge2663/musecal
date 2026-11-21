@@ -1,0 +1,32 @@
+{
+ "kind": "calendar#events",
+ "etag": "\"p33cc1qsuc2bf20o\"",
+ "summary": "日本の祝日",
+ "description": "日本の祝日と行事",
+ "updated": "2026-11-20T00:00:00.000Z",
+ "timeZone": "Asia/Tokyo",
+ "accessRole": "reader",
+ "defaultReminders": [],
+ "items": [
+  {
+   "kind": "calendar#event",
+   "etag": "\"3400000000000000\"",
+   "id": "20261225_rtv2egaglv4vgug52403davbvs",
+   "status": "confirmed",
+   "htmlLink": "https://www.google.com/calendar/event?eid=MjAyNjEyMjU",
+   "created": "2025-01-01T00:00:00.000Z",
+   "updated": "2025-01-01T00:00:00.000Z",
+   "summary": "クリスマス",
+   "description": "行事\n祝日を非表示にするには、Google カレンダーの設定 > 日本の祝日 に移動してください",
+   "creator": {"email": "ja.japanese#holiday@group.v.calendar.google.com", "displayName": "日本の祝日", "self": false},
+   "organizer": {"email": "ja.japanese#holiday@group.v.calendar.google.com", "displayName": "日本の祝日", "self": true},
+   "start": {"date": "2026-12-25"},
+   "end": {"date": "2026-12-26"},
+   "transparency": "transparent",
+   "visibility": "public",
+   "iCalUID": "20261225_rtv2egaglv4vgug52403davbvs@google.com",
+   "sequence": 0,
+   "eventType": "default"
+  }
+ ]
+}

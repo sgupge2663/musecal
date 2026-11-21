@@ -65,6 +65,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -96,12 +97,18 @@ import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.Duration
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -198,7 +205,7 @@ class MainActivity : ComponentActivity() {
 /**
  * V1-1: サインイン状態で画面を出し分ける入口。
  * 未サインイン時はサンプル予定を一切出さず、サインイン案内だけを出す（V1-5 の未ログイン画面を兼ねる）。
- * サインイン済みなら従来の月表示（データは V1-3 の実データ接続までサンプルのまま）。
+ * サインイン済みなら月表示に実データ（V1-3: events.list）を出す。取得前・取得失敗時は空で、サンプルは出さない。
  */
 @Composable
 private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
@@ -215,6 +222,51 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     // 同意画面を出している間の札（同意画面の結果はこの札の要求として扱う）。
     var consentTicket by remember { mutableStateOf<AccountRequestGate.Ticket?>(null) }
     fun isCurrent(ticket: AccountRequestGate.Ticket) = gate.isCurrent(ticket, auth.account.value?.email)
+
+    // V1-3: 予定。表示中の6週ウィンドウごとに取得し、在メモリで保持する（永続キャッシュは V1-4）。
+    // 取得前・取得失敗時は空のまま（サンプルで実データを装わない）。
+    val store = remember { EventWindowStore() }
+    var events by remember { mutableStateOf<List<CalEvent>>(emptyList()) }
+    // 今のアカウントの札（予定の取得もこの札で結果を判定する）。サインアウトで null。
+    var activeTicket by remember { mutableStateOf<AccountRequestGate.Ticket?>(null) }
+    // 月表示が今見ている週（各週の日曜）。スクロールが止まるたびに MuseCalApp から届く。
+    var visibleWeeks by remember { mutableStateOf<List<LocalDate>>(emptyList()) }
+
+    fun fetchEventWindow(ticket: AccountRequestGate.Ticket, tabsSnapshot: List<CalendarTab>, window: EventWindow) {
+        val gen = store.generation
+        store.markInFlight(window)
+        val zone = ZoneId.systemDefault()
+        scope.launch {
+            // トークンは保存せず、取得のたびに取り直す（認可済みなら無言で返る）。
+            val access = auth.authorizeCalendar()
+            // アカウント切替・サインアウト・タブの取り直しの後に返った結果は捨てる（成功・失敗とも）
+            fun stale() = !isCurrent(ticket) || store.generation != gen
+            if (stale()) return@launch
+            val token = when (access) {
+                is CalendarAuth.CalendarAccess.Granted -> access.accessToken
+                is CalendarAuth.CalendarAccess.ConsentRequired, is CalendarAuth.CalendarAccess.Failed -> {
+                    store.fail(window)
+                    val why = (access as? CalendarAuth.CalendarAccess.Failed)?.error?.message ?: "再度の許可が必要です"
+                    Toast.makeText(context, "予定を取得できませんでした: $why", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+            }
+            // 1つのカレンダーでも失敗したらそのウィンドウは反映しない（一部だけ出して「予定が無い」と誤解させないため）
+            val result = runCatching {
+                coroutineScope {
+                    tabsSnapshot.map { tab -> async { EventsApi.fetchWindow(token, tab, window, zone) } }.awaitAll().flatten()
+                }
+            }
+            if (stale()) return@launch
+            result
+                .onSuccess { store.put(window, it); events = store.merged() }
+                .onFailure {
+                    store.fail(window)
+                    if (it is kotlinx.coroutines.CancellationException) return@launch // 画面を離れた等。失敗として見せない
+                    Toast.makeText(context, "予定を取得できませんでした: ${it.message}", Toast.LENGTH_LONG).show()
+                }
+        }
+    }
 
     fun loadCalendarList(ticket: AccountRequestGate.Ticket, accessToken: String) {
         scope.launch {
@@ -272,17 +324,41 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     LaunchedEffect(current?.email) {
         tabs = emptyList()
         val email = current?.email
-        if (email == null) gate.invalidate() else requestCalendarAccess(gate.begin(email))
+        if (email == null) {
+            gate.invalidate()
+            activeTicket = null
+        } else {
+            val ticket = gate.begin(email)
+            activeTicket = ticket
+            requestCalendarAccess(ticket)
+        }
+    }
+    // V1-3: アカウントかタブが変わったら予定を捨てて取り直す。表示中の週が取得済み・取得中の範囲から
+    // はみ出したら、はみ出した最初の週から6週分を取る（1回のスクロールで足りない分は続けて取る）。
+    val storeKey = remember { arrayOfNulls<Any>(1) }
+    LaunchedEffect(activeTicket, tabs, visibleWeeks) {
+        val key = activeTicket to tabs
+        if (storeKey[0] != key) {
+            storeKey[0] = key
+            store.reset()
+            events = emptyList()
+        }
+        val ticket = activeTicket ?: return@LaunchedEffect
+        if (tabs.isEmpty() || !isCurrent(ticket)) return@LaunchedEffect
+        while (true) {
+            val w = windowToFetch(visibleWeeks, store.coveredWeeks()) ?: break
+            fetchEventWindow(ticket, tabs, w)
+        }
     }
     if (current == null) {
         SignInScreen(auth) {}
     } else {
-        val events = remember { loadEvents(context) }
         MuseCalApp(
             events, todayState,
             accountEmail = current.email,
             onSignOut = { scope.launch { auth.signOut() } },
             tabs = tabs,
+            onVisibleWeeksChange = { visibleWeeks = it },
         )
     }
 }
@@ -375,6 +451,8 @@ fun MuseCalApp(
     onSignOut: () -> Unit,
     /** V1-2: calendarList から対応づけた下部タブ（[mapCalendarTabs]）。 */
     tabs: List<CalendarTab>,
+    /** V1-3: スクロールが止まるたびに、表示中の週（各週の日曜）を知らせる。予定の取得範囲の判定に使う。 */
+    onVisibleWeeksChange: (List<LocalDate>) -> Unit = {},
 ) {
     val context = LocalContext.current
     // 非表示にしたカレンダーの calendarId
@@ -396,6 +474,17 @@ fun MuseCalApp(
             if (first != null && listState.firstVisibleItemScrollOffset > first.size / 2) i += 1
             YearMonth.from(weekStartOf(i).plusDays(6))
         }
+    }
+    val visibleWeeksCallback by rememberUpdatedState(onVisibleWeeksChange)
+    LaunchedEffect(listState) {
+        // スクロール中は送らない（フリングや月送りのアニメーションの途中の週で取得を始めないため）
+        snapshotFlow {
+            if (listState.isScrollInProgress) null
+            else listState.layoutInfo.visibleItemsInfo.map { it.index }.takeIf { it.isNotEmpty() }
+        }
+            .filterNotNull()
+            .distinctUntilChanged()
+            .collect { idx -> visibleWeeksCallback(idx.map(::weekStartOf)) }
     }
     fun scrollToMonth(m: YearMonth) {
         scope.launch { listState.animateScrollToItem(weekIndexOf(m.atDay(1))) }

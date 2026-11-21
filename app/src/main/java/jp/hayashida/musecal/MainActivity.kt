@@ -259,7 +259,7 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
             }
             if (stale()) return@launch
             result
-                .onSuccess { store.put(window, it); events = store.merged() }
+                .onSuccess { store.put(window, it, zone); events = store.merged() }
                 .onFailure {
                     store.fail(window)
                     if (it is kotlinx.coroutines.CancellationException) return@launch // 画面を離れた等。失敗として見せない

@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.OffsetDateTime
@@ -40,6 +41,13 @@ data class CalEvent(
     val location: String,
     /** Google Calendar の event id（V1-3。重複除去に使う）。同梱サンプルには無い。 */
     val eventId: String? = null,
+    /**
+     * events.list が timeMin/timeMax と照合するときの予定の区間 [matchStart, matchEnd)（V1-3）。表示用の日付とは別物。
+     * 時間指定は start/end の時刻そのもの。終日は date を**カレンダーのタイムゾーン**の 0:00 として時刻化したもの
+     * （Google の仕様「Matching all-day events to time-bracketed queries」）。同梱サンプルには無い（null）。
+     */
+    val matchStart: Instant? = null,
+    val matchEnd: Instant? = null,
 ) {
     /** 終日、または日をまたぐ時間指定 → 色帯で描く。 */
     val isBar: Boolean get() = allDay || endDateInclusive > startDate

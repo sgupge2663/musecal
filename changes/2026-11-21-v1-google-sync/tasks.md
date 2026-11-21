@@ -44,7 +44,14 @@
       - 指摘2（中）重なり窓の再取得で削除済み予定が残る → `EventWindowStore.put` で、新しい完全応答の窓の範囲（events.list の timeMin/timeMax と同じ境界）にかかる旧窓の予定を捨てる。テスト: 11/29 窓で取った 12/10 の予定が 11/22 窓の再取得で返らなければ消える（範囲外の 1/5 は残る）、移動した予定が旧日付に残らない
       - 指摘3（中）失敗後に同じ週での再停止で取り直さない → 停止の検出を `ScrollStopDetector`（停止のたびに同じ週でも1回知らせる、スクロール中と単なる再評価では知らせない）に分け、MuseCalRoot は停止ごとに番号（scrollStopSeq）を進めて取得判定の LaunchedEffect を再起動する。テスト: 失敗 → 同じ週で再停止 → 同じ窓が再び取得対象、成功後は再停止しても取らない、検出器の境界
       - 指摘4（証拠）期待値の生成コードが無い → work/v13/make_expected.py と README.md に保存し再実行（上記）。RealEventsDumpTest の出力に終了時刻を追加
-      - 修正後の検証: 単体テスト 51件（失敗 0、省略 1＝RealEventsDumpTest は環境変数があるときだけ動く照合用。GoogleEventsTest 23件）、check.sh 成功、Roborazzi 差分なし
+      - 修正後の検証: 単体テスト 51件（失敗 0、省略 1＝RealEventsDumpTest は環境変数があるときだけ動く照合用。GoogleEventsTest 23件）、check.sh 成功、Roborazzi 差分なし、ブランチ CI 成功（run 44924796708、951c042）
+    - 再レビュー対応（2026-11-21、Codex 修正確認レビュー 951c042 は「不可（コードと記録の範囲）」。正本は work/v13/codex-review-951c042.md。前回指摘1・3・4は解消確認、指摘2は同一 TZ のみ解消で、端末とカレンダーの TZ が違う終日予定の除去漏れ1件が残った。このラウンドはこの1件だけ）:
+      - 原因: 旧窓の予定の除去判定を表示日（startDate / endDateInclusive）で行っていたが、events.list は終日予定を**カレンダーのタイムゾーン**で時刻化して timeMin（終了時刻の排他的下限）/ timeMax（開始時刻の排他的上限）と照合する（Google 公式 "Matching all-day events to time-bracketed queries" と events.list リファレンス）。例: 端末 Asia/Tokyo・カレンダー America/Los_Angeles の 2027/1/2 終日は日本時間 1/2 17:00〜1/3 17:00 で 1/3 開始窓の API 範囲に入るが、表示日判定では窓外として残っていた
+      - 修正: CalEvent に API 照合用の区間 matchStart / matchEnd（Instant）を表示日とは別に持たせた。時間指定は start/end の時刻、終日は date をカレンダーのタイムゾーンの 0:00 として時刻化（end.date は排他的）。カレンダーのタイムゾーンは events.list 応答の最上位 timeZone（リファレンス上「The time zone of the calendar」）から取り、FIELDS に timeZone を追加。読めないときは端末 TZ。EventWindowStore.put は取得時の端末 TZ を受け取り、その窓の timeMin/timeMax（EventWindow.timeMin/timeMax。取得 URL と同じ計算）に対して「matchEnd > timeMin かつ matchStart < timeMax」の予定だけを除去（API と同じ判定）。照合区間を持たない予定（同梱サンプル）だけ従来の表示日判定。表示日（帯の位置）は変えていない
+      - テスト（GoogleEventsTest に5件追加、計28件）: (1) 照合区間がカレンダー TZ で時刻化され表示日はそのまま・timeZone 欠落時は端末 TZ・時間指定は時刻そのもの (2) 端末 Asia/Tokyo×カレンダー America/Los_Angeles で 11/29 窓に保持した 1/2 終日を削除 → 1/3 窓の完全応答で消える（範囲外の 12/20 は残る） (3) 同条件で範囲外（12/24）へ移動 → 旧日付 1/2 に残らず、旧窓の再取得で 12/24 に出る (4) 逆向き（カレンダー Pacific/Kiritimati +14 の 1/3 終日）が 11/22 窓（timeMax 1/3 00:00 JST）の完全応答に無ければ消える (5) 同一 TZ の境界（窓開始ちょうどで終わる終日・時間指定、窓終了ちょうどから始まる終日）は除去しない。既存の削除反映・移動・重複除去のテストは copy() で日付だけ変えていた予定を JSON からの変換で作り直した（照合区間を日付と一致させるため）
+      - 陰性対照: 除去判定を一時的に旧来の表示日判定へ戻して GoogleEventsTest を実行 → (2)(3)(4) の3件だけが失敗（28件中3件）。戻した後のソースで check.sh を実施
+      - 検証: `scripts/check.sh` 成功（assembleDebug / testDebugUnitTest / lintDebug）。単体テスト 56件（失敗 0、省略 1＝RealEventsDumpTest）、Roborazzi ベースライン3画面に差分なし。ブランチ CI は下の追記を参照
+      - 未確認: 実 API（カレンダー TZ が端末と異なる実カレンダー）での挙動は未確認（静的な仕様との照合と単体テストのみ）。実機照合はユーザーの最終チェックの範囲
 
 - [ ] V1-4 キャッシュと更新
   - 内容: 取得結果を端末にキャッシュ。起動時はキャッシュ即表示→裏で再取得。手動リフレッシュ導線。取得失敗時はキャッシュ表示＋鮮度（最終取得時刻）の表示

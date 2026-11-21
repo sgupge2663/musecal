@@ -7,6 +7,7 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.time.Instant
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.ZoneId
@@ -25,6 +26,12 @@ import java.time.format.DateTimeFormatter
 /** 取得単位。[start]（日曜）から6週分（42日）。 */
 data class EventWindow(val start: LocalDate) {
     val endExclusive: LocalDate get() = start.plusWeeks(WEEKS.toLong())
+
+    /** events.list に渡す timeMin（予定の終了時刻の排他的下限）。[zone] は取得時の端末タイムゾーン。 */
+    fun timeMin(zone: ZoneId): Instant = start.atStartOfDay(zone).toInstant()
+
+    /** events.list に渡す timeMax（予定の開始時刻の排他的上限）。 */
+    fun timeMax(zone: ZoneId): Instant = endExclusive.atStartOfDay(zone).toInstant()
     val weekStarts: List<LocalDate> get() = List(WEEKS) { start.plusWeeks(it.toLong()) }
 
     companion object {
@@ -50,11 +57,18 @@ fun windowToFetch(visibleWeekStarts: List<LocalDate>, covered: Set<LocalDate>): 
  *   colorId が無い（またはパレット外）ならカレンダーの backgroundColor（[CalendarTab.color]）。
  * - calendarId: 取得したカレンダーの id（タブのフィルタに使う）。
  */
-fun googleEventToCalEvent(o: JSONObject, calendar: CalendarTab, zone: ZoneId): CalEvent? {
+fun googleEventToCalEvent(
+    o: JSONObject,
+    calendar: CalendarTab,
+    zone: ZoneId,
+    /** カレンダーのタイムゾーン（events.list 応答の最上位 timeZone）。終日予定の照合用区間（matchStart/End）に使う。 */
+    calendarZone: ZoneId = zone,
+): CalEvent? {
     if (o.optString("status") == "cancelled") return null
     val start = o.optJSONObject("start") ?: return null
     val end = o.optJSONObject("end") ?: start
-    val common = { allDay: Boolean, s: LocalDate, e: LocalDate, zs: java.time.ZonedDateTime?, ze: java.time.ZonedDateTime? ->
+    val common = { allDay: Boolean, s: LocalDate, e: LocalDate, zs: java.time.ZonedDateTime?, ze: java.time.ZonedDateTime?,
+                   ms: Instant, me: Instant ->
         CalEvent(
             title = o.optString("summary", ""),
             allDay = allDay,
@@ -67,6 +81,8 @@ fun googleEventToCalEvent(o: JSONObject, calendar: CalendarTab, zone: ZoneId): C
             calendarColor = calendar.color,
             location = o.optString("location", ""),
             eventId = o.optString("id", "").ifEmpty { null },
+            matchStart = ms,
+            matchEnd = me,
         )
     }
     val startDate = start.optString("date", "")
@@ -74,16 +90,17 @@ fun googleEventToCalEvent(o: JSONObject, calendar: CalendarTab, zone: ZoneId): C
     return when {
         startDate.isNotEmpty() -> {
             val s = LocalDate.parse(startDate)
-            val endDate = end.optString("date", "").ifEmpty { null }
             // end.date は排他的（翌日）
-            val e = endDate?.let { LocalDate.parse(it).minusDays(1) } ?: s
-            common(true, s, e, null, null)
+            val endExclusive = end.optString("date", "").ifEmpty { null }?.let(LocalDate::parse) ?: s.plusDays(1)
+            // 表示日は date 文字列のまま。API との照合区間はカレンダーのタイムゾーンで時刻化する
+            common(true, s, endExclusive.minusDays(1), null, null,
+                s.atStartOfDay(calendarZone).toInstant(), endExclusive.atStartOfDay(calendarZone).toInstant())
         }
         startDateTime.isNotEmpty() -> {
             val zs = OffsetDateTime.parse(startDateTime).atZoneSameInstant(zone)
             val ze = end.optString("dateTime", "").ifEmpty { null }
                 ?.let { OffsetDateTime.parse(it).atZoneSameInstant(zone) } ?: zs
-            common(false, zs.toLocalDate(), timedEndDate(zs, ze), zs, ze)
+            common(false, zs.toLocalDate(), timedEndDate(zs, ze), zs, ze, zs.toInstant(), ze.toInstant())
         }
         else -> null
     }
@@ -117,9 +134,12 @@ class ScrollStopDetector {
 /** events.list の1ページ分の JSON を読む。 */
 fun parseEventsPage(json: String, calendar: CalendarTab, zone: ZoneId): Pair<List<CalEvent>, String?> {
     val o = JSONObject(json)
+    // 応答の最上位 timeZone は「カレンダーのタイムゾーン」（events.list リファレンス）。読めなければ端末のタイムゾーン
+    val calendarZone = o.optString("timeZone", "").ifEmpty { null }
+        ?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: zone
     val items = o.optJSONArray("items")
     val events = (0 until (items?.length() ?: 0)).mapNotNull { i ->
-        googleEventToCalEvent(items!!.getJSONObject(i), calendar, zone)
+        googleEventToCalEvent(items!!.getJSONObject(i), calendar, zone, calendarZone)
     }
     return events to o.optString("nextPageToken", "").ifEmpty { null }
 }
@@ -128,7 +148,7 @@ fun parseEventsPage(json: String, calendar: CalendarTab, zone: ZoneId): Pair<Lis
 object EventsApi {
     private const val BASE = "https://www.googleapis.com/calendar/v3/calendars/"
     private const val FIELDS =
-        "items(id,status,summary,start,end,colorId,location,recurringEventId),nextPageToken"
+        "timeZone,items(id,status,summary,start,end,colorId,location,recurringEventId),nextPageToken"
     private val RFC3339: DateTimeFormatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
 
     class HttpError(val code: Int, message: String) : IOException(message)
@@ -140,8 +160,8 @@ object EventsApi {
         window: EventWindow,
         zone: ZoneId,
     ): List<CalEvent> = withContext(Dispatchers.IO) {
-        val timeMin = window.start.atStartOfDay(zone).toOffsetDateTime().format(RFC3339)
-        val timeMax = window.endExclusive.atStartOfDay(zone).toOffsetDateTime().format(RFC3339)
+        val timeMin = window.timeMin(zone).atZone(zone).toOffsetDateTime().format(RFC3339)
+        val timeMax = window.timeMax(zone).atZone(zone).toOffsetDateTime().format(RFC3339)
         fetchAllPages { pageToken ->
             val url = buildString {
                 append(BASE).append(pathSegment(calendar.calendarId)).append("/events")
@@ -241,17 +261,30 @@ class EventWindowStore {
         inFlight -= w.start
     }
 
-    fun put(w: EventWindow, events: List<CalEvent>) {
+    /** [zone] はその窓を取得したときの端末タイムゾーン（events.list に渡した timeMin/timeMax と同じもの）。 */
+    fun put(w: EventWindow, events: List<CalEvent>, zone: ZoneId) {
         inFlight -= w.start
         loaded.remove(w.start)
+        val timeMin = w.timeMin(zone)
+        val timeMax = w.timeMax(zone)
         for (key in loaded.keys.toList()) {
-            loaded[key] = loaded.getValue(key).filterNot { it.overlaps(w) }
+            loaded[key] = loaded.getValue(key).filterNot { it.matchedBy(w, timeMin, timeMax) }
         }
         loaded[w.start] = events // 末尾 = 最新
     }
 
-    /** 予定の表示日がウィンドウ [start, endExclusive) にかかるか（events.list の timeMin/timeMax と同じ境界）。 */
-    private fun CalEvent.overlaps(w: EventWindow): Boolean = startDate < w.endExclusive && endDateInclusive >= w.start
+    /**
+     * その窓の events.list が返す範囲に入る予定か（＝その窓の完全応答が権威を持つ予定か）。
+     * API と同じ判定: 予定の終了 > timeMin かつ 予定の開始 < timeMax。区間は表示日でなく [CalEvent.matchStart]/[CalEvent.matchEnd]
+     * （終日はカレンダーのタイムゾーンで時刻化した区間。V1-3 Codex 再レビュー 951c042: 端末とカレンダーの TZ が違うと
+     * 表示日での判定は API の境界とずれる）。照合区間を持たない予定（同梱サンプル）だけ表示日で判定する。
+     */
+    private fun CalEvent.matchedBy(w: EventWindow, timeMin: Instant, timeMax: Instant): Boolean {
+        val ms = matchStart
+        val me = matchEnd
+        return if (ms != null && me != null) me > timeMin && ms < timeMax
+        else startDate < w.endExclusive && endDateInclusive >= w.start
+    }
 
     /** 全ウィンドウを合わせた予定（重複は最新のウィンドウのものを残す）。 */
     fun merged(): List<CalEvent> {

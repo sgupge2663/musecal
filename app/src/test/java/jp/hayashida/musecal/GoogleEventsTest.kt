@@ -29,6 +29,16 @@ class GoogleEventsTest {
     private fun page2() = parseEventsPage(fixture("main_dec2026_page2.json"), mainTab, tokyo)
     private fun byId(events: List<CalEvent>, id: String) = events.single { it.eventId == id }
 
+    /** 実 API と同じ形の1件だけの応答から変換する（照合区間 matchStart/End も変換経路で付く）。 */
+    private fun one(item: String, calendarTz: String = "Asia/Tokyo", tab: CalendarTab = mainTab): CalEvent =
+        parseEventsPage("""{"kind":"calendar#events","timeZone":"$calendarTz","items":[$item]}""", tab, tokyo).first.single()
+
+    private fun allDay(id: String, date: String, endDate: String, calendarTz: String, tab: CalendarTab = mainTab) =
+        one("""{"id":"$id","status":"confirmed","summary":"$id","start":{"date":"$date"},"end":{"date":"$endDate"}}""", calendarTz, tab)
+
+    private fun timed(id: String, start: String, end: String) =
+        one("""{"id":"$id","status":"confirmed","summary":"$id","start":{"dateTime":"$start"},"end":{"dateTime":"$end"}}""")
+
     @Test
     fun pageTokenIsReadAndAllItemsConverted() {
         val (events, next) = page1()
@@ -183,7 +193,7 @@ class GoogleEventsTest {
         assertNull(windowToFetch(weeks(nov29, 6), store.coveredWeeks()))
         store.fail(w)
         assertEquals(w, windowToFetch(weeks(nov29, 6), store.coveredWeeks()))
-        store.put(w, page1().first)
+        store.put(w, page1().first, tokyo)
         assertEquals(6, store.merged().size)
         val gen = store.generation
         store.reset()
@@ -196,15 +206,15 @@ class GoogleEventsTest {
     fun overlappingWindowsDeduplicateByCalendarAndEventIdPreferringLatest() {
         val store = EventWindowStore()
         val first = page1().first
-        store.put(EventWindow(nov29), first)
+        store.put(EventWindow(nov29), first, tokyo)
         val renamed = first.map { if (it.eventId == "alldayrange0004") it.copy(title = "帰省（変更）") else it }
             .filter { it.eventId == "alldayrange0004" }
-        store.put(EventWindow(nov29.plusWeeks(4)), renamed)
+        store.put(EventWindow(nov29.plusWeeks(4)), renamed, tokyo)
         val merged = store.merged()
         assertEquals(6, merged.size)
         assertEquals("帰省（変更）", merged.single { it.eventId == "alldayrange0004" }.title)
         // 同じ event id でも別カレンダーなら別の予定
-        store.put(EventWindow(nov29.plusWeeks(8)), listOf(first[0].copy(calendarId = mokuyouTab.calendarId)))
+        store.put(EventWindow(nov29.plusWeeks(8)), listOf(first[0].copy(calendarId = mokuyouTab.calendarId)), tokyo)
         assertEquals(7, store.merged().size)
     }
 
@@ -246,12 +256,11 @@ class GoogleEventsTest {
         val store = EventWindowStore()
         val dec10 = byId(page1().first, "notitle0005") // 12/10
         val dec30 = byId(page1().first, "alldayrange0004") // 12/30〜1/2（新しい窓 11/22〜1/2 にかかる）
-        val jan5 = dec10.copy(eventId = "jan5", startDate = LocalDate.of(2027, 1, 5), endDateInclusive = LocalDate.of(2027, 1, 5),
-            start = dec10.start!!.withMonth(1).withYear(2027).withDayOfMonth(5), end = dec10.end!!.withMonth(1).withYear(2027).withDayOfMonth(5))
-        store.put(EventWindow(nov29), listOf(dec10, dec30, jan5))
+        val jan5 = timed("jan5", "2027-01-05T09:00:00+09:00", "2027-01-05T10:00:00+09:00")
+        store.put(EventWindow(nov29), listOf(dec10, dec30, jan5), tokyo)
         val nov22 = nov29.minusWeeks(1)
         assertEquals(LocalDate.of(2027, 1, 3), EventWindow(nov22).endExclusive)
-        store.put(EventWindow(nov22), listOf(dec30))
+        store.put(EventWindow(nov22), listOf(dec30), tokyo)
         val merged = store.merged()
         assertEquals(listOf("alldayrange0004", "jan5"), merged.mapNotNull { it.eventId }.sorted())
         // 新しい窓の範囲外（1/5）の予定は古い窓の分として残る
@@ -262,9 +271,9 @@ class GoogleEventsTest {
     fun movedEventDoesNotRemainAtOldDate() {
         val store = EventWindowStore()
         val e = byId(page1().first, "alldaysingle0003") // 12/16
-        store.put(EventWindow(nov29), listOf(e))
-        val moved = e.copy(startDate = LocalDate.of(2026, 12, 18), endDateInclusive = LocalDate.of(2026, 12, 18))
-        store.put(EventWindow(nov29.plusWeeks(2)), listOf(moved)) // 12/13〜1/23
+        store.put(EventWindow(nov29), listOf(e), tokyo)
+        val moved = allDay("alldaysingle0003", "2026-12-18", "2026-12-19", "Asia/Tokyo")
+        store.put(EventWindow(nov29.plusWeeks(2)), listOf(moved), tokyo) // 12/13〜1/23
         assertEquals(listOf(LocalDate.of(2026, 12, 18)), store.merged().map { it.startDate })
     }
 
@@ -289,7 +298,7 @@ class GoogleEventsTest {
         assertEquals(idx, detector.onState(false, idx))
         assertEquals(w, windowToFetch(visible, store.coveredWeeks()))
         // 成功後は同じ週で止まっても取り直さない
-        store.put(w, emptyList())
+        store.put(w, emptyList(), tokyo)
         assertNull(detector.onState(true, idx))
         assertEquals(idx, detector.onState(false, idx))
         assertNull(windowToFetch(visible, store.coveredWeeks()))
@@ -303,5 +312,83 @@ class GoogleEventsTest {
         assertEquals(listOf(2, 3), d.onState(false, listOf(2, 3)))
         // 停止のまま週が変わった（animateScrollToItem 直後等）なら知らせる
         assertEquals(listOf(5, 6), d.onState(false, listOf(5, 6)))
+    }
+
+    // ---------- Codex 再レビュー（951c042）: 端末とカレンダーの TZ が違う終日予定 ----------
+
+    private val laTab = CalendarTab("la@example.com", "LA", Color(0xFF9E9E9E))
+    private val jan3 = LocalDate.of(2027, 1, 3) // 日曜
+
+    @Test
+    fun allDayMatchIntervalUsesCalendarTimeZoneWhileDisplayDateStaysAsIs() {
+        val e = allDay("la-jan2", "2027-01-02", "2027-01-03", "America/Los_Angeles", laTab)
+        // 表示日は date 文字列のまま
+        assertEquals(LocalDate.of(2027, 1, 2), e.startDate)
+        assertEquals(LocalDate.of(2027, 1, 2), e.endDateInclusive)
+        // API との照合区間はカレンダー TZ の 0:00 = 日本時間 1/2 17:00〜1/3 17:00
+        assertEquals(ZonedDateTime.of(2027, 1, 2, 17, 0, 0, 0, tokyo).toInstant(), e.matchStart)
+        assertEquals(ZonedDateTime.of(2027, 1, 3, 17, 0, 0, 0, tokyo).toInstant(), e.matchEnd)
+        // 応答に timeZone が無ければ端末の TZ
+        val noTz = parseEventsPage(
+            """{"items":[{"id":"x","status":"confirmed","start":{"date":"2027-01-02"},"end":{"date":"2027-01-03"}}]}""",
+            laTab, tokyo,
+        ).first.single()
+        assertEquals(ZonedDateTime.of(2027, 1, 2, 0, 0, 0, 0, tokyo).toInstant(), noTz.matchStart)
+        // 時間指定は時刻そのもの
+        val t = timed("t", "2026-12-10T09:00:00+09:00", "2026-12-10T10:00:00+09:00")
+        assertEquals(t.start!!.toInstant(), t.matchStart)
+        assertEquals(t.end!!.toInstant(), t.matchEnd)
+    }
+
+    @Test
+    fun deletedAllDayEventOfOtherTimeZoneCalendarDoesNotRemainAtOldDate() {
+        // 端末 Asia/Tokyo、カレンダー America/Los_Angeles。11/29 窓で 2027/1/2 の終日予定を保持
+        val store = EventWindowStore()
+        val jan2 = allDay("la-jan2", "2027-01-02", "2027-01-03", "America/Los_Angeles", laTab)
+        val dec20 = allDay("la-dec20", "2026-12-20", "2026-12-21", "America/Los_Angeles", laTab)
+        store.put(EventWindow(nov29), listOf(jan2, dec20), tokyo)
+        // 表示日だけで見ると 1/3 開始窓にかからない境界ケース（endDateInclusive 1/2 < 窓の開始 1/3）
+        assertTrue(jan2.endDateInclusive < EventWindow(jan3).start)
+        // 予定を削除 → 1/3 開始窓の完全応答には無い → API の範囲（1/3 00:00 JST 以降に終わる）に入るので消える
+        store.put(EventWindow(jan3), emptyList(), tokyo)
+        assertEquals(listOf("la-dec20"), store.merged().map { it.eventId })
+    }
+
+    @Test
+    fun allDayEventOfOtherTimeZoneMovedOutOfNewWindowDoesNotRemainAtOldDate() {
+        val store = EventWindowStore()
+        store.put(EventWindow(nov29), listOf(allDay("la-jan2", "2027-01-02", "2027-01-03", "America/Los_Angeles", laTab)), tokyo)
+        // 12/24 へ移動（新しい 1/3 窓に含まれない以前の日）。1/3 窓の完全応答には無い
+        store.put(EventWindow(jan3), emptyList(), tokyo)
+        assertTrue(store.merged().none { it.startDate == LocalDate.of(2027, 1, 2) })
+        // 旧窓を取り直すと移動後の日付で出る（旧日付には残らない）
+        store.put(EventWindow(nov29), listOf(allDay("la-jan2", "2026-12-24", "2026-12-25", "America/Los_Angeles", laTab)), tokyo)
+        assertEquals(listOf(LocalDate.of(2026, 12, 24)), store.merged().map { it.startDate })
+    }
+
+    @Test
+    fun allDayEventOfEastOfDeviceCalendarAtWindowEndIsRemovedWhenGone() {
+        // 逆向き: カレンダー Pacific/Kiritimati（+14）の 1/3 終日 = 日本時間 1/2 19:00〜1/3 19:00。
+        // 11/22 開始窓（timeMax = 1/3 00:00 JST）の API 範囲に入るので、その完全応答に無ければ消える
+        val store = EventWindowStore()
+        val e = allDay("kiri-jan3", "2027-01-03", "2027-01-04", "Pacific/Kiritimati", laTab)
+        store.put(EventWindow(jan3), listOf(e), tokyo)
+        assertTrue(e.startDate >= EventWindow(nov29.minusWeeks(1)).endExclusive) // 表示日では窓の外
+        store.put(EventWindow(nov29.minusWeeks(1)), emptyList(), tokyo)
+        assertTrue(store.merged().isEmpty())
+    }
+
+    @Test
+    fun sameTimeZoneBoundariesAreUnchanged() {
+        // 同一 TZ: 窓開始ちょうどで終わる予定・窓終了ちょうどから始まる予定は除去しない
+        val store = EventWindowStore()
+        val endsAtStart = allDay("ends-at-start", "2027-01-02", "2027-01-03", "Asia/Tokyo")   // 終了 = 1/3 00:00 = timeMin
+        val timedEndsAtStart = timed("timed-ends", "2027-01-02T23:00:00+09:00", "2027-01-03T00:00:00+09:00")
+        val startsAtEnd = allDay("starts-at-end", "2027-02-14", "2027-02-15", "Asia/Tokyo") // 開始 = 2/14 00:00 = timeMax
+        store.put(EventWindow(nov29), listOf(endsAtStart, timedEndsAtStart), tokyo)
+        store.put(EventWindow(jan3.plusWeeks(6)), listOf(startsAtEnd), tokyo)
+        assertEquals(LocalDate.of(2027, 2, 14), EventWindow(jan3).endExclusive)
+        store.put(EventWindow(jan3), emptyList(), tokyo)
+        assertEquals(listOf("ends-at-start", "starts-at-end", "timed-ends"), store.merged().mapNotNull { it.eventId }.sorted())
     }
 }

@@ -391,4 +391,106 @@ class GoogleEventsTest {
         store.put(EventWindow(jan3), emptyList(), tokyo)
         assertEquals(listOf("ends-at-start", "starts-at-end", "timed-ends"), store.merged().mapNotNull { it.eventId }.sorted())
     }
+
+    // ---------- V1-4a 今すぐ同期（取得済みの窓の強制再取得） ----------
+
+    private val applied = EventWindowStore.Outcome.Applied
+    private val discarded = EventWindowStore.Outcome.Discarded
+    private fun ok(events: List<CalEvent>) = Result.success(events)
+
+    @Test
+    fun syncNowRefetchesLoadedWindowThatScrollStopWouldSkip() {
+        val store = EventWindowStore()
+        val visible = weeks(nov29, 6)
+        val w = EventWindow(nov29)
+        store.put(w, page1().first, tokyo)
+        // スクロール停止の経路では取得済みなので取らない
+        assertNull(windowToFetch(visible, store.coveredWeeks()))
+        // 今すぐ同期は取得済みでも同じ窓を取り直す
+        assertEquals(listOf(w), windowsToRefresh(visible))
+        val p = store.markInFlight(w)
+        // Web 版で 12/16 の予定を削除し、帰省の名前を変えた後の応答
+        val after = page1().first.filter { it.eventId != "alldaysingle0003" }
+            .map { if (it.eventId == "alldayrange0004") it.copy(title = "帰省（変更）") else it }
+        assertEquals(applied, store.finish(p, ok(after), tokyo, stillCurrent = true))
+        val merged = store.merged()
+        assertEquals(5, merged.size)
+        assertTrue(merged.none { it.eventId == "alldaysingle0003" })
+        assertEquals("帰省（変更）", merged.single { it.eventId == "alldayrange0004" }.title)
+        assertTrue(store.coveredWeeks().containsAll(visible))
+    }
+
+    @Test
+    fun syncNowCoversAllVisibleWeeksIncludingPartlyVisibleSeventh() {
+        // 行の途中で止まって7週見えているときは、7週目から始まる窓も取り直す
+        assertEquals(listOf(EventWindow(nov29), EventWindow(nov29.plusWeeks(6))), windowsToRefresh(weeks(nov29, 7)))
+        assertTrue(windowsToRefresh(emptyList()).isEmpty())
+    }
+
+    @Test
+    fun failedSyncNowKeepsExistingEventsAndReportsFailure() {
+        val store = EventWindowStore()
+        val w = EventWindow(nov29)
+        store.put(w, page1().first, tokyo)
+        val before = store.merged()
+        val p = store.markInFlight(w)
+        val error = EventsApi.HttpError(503, "予定の取得に失敗しました（HTTP 503）")
+        val outcome = store.finish(p, Result.failure(error), tokyo, stillCurrent = true)
+        // 失敗は理由つきで呼び出し側へ返る（トーストに出す）
+        assertTrue(outcome is EventWindowStore.Outcome.Failed)
+        assertEquals(error, (outcome as EventWindowStore.Outcome.Failed).error)
+        // 表示中の予定は消えず、取得済みの扱いも変わらない（スクロールで取り直しが暴走しない）
+        assertEquals(before, store.merged())
+        assertNull(windowToFetch(weeks(nov29, 6), store.coveredWeeks()))
+        // 取り消し（画面を離れた等）は失敗として知らせない
+        val q = store.markInFlight(w)
+        assertEquals(discarded, store.finish(q, Result.failure(kotlinx.coroutines.CancellationException()), tokyo, true))
+        assertEquals(before, store.merged())
+    }
+
+    @Test
+    fun olderScrollFetchReturningAfterSyncNowDoesNotOverwriteNewerResult() {
+        // スクロール由来の取得 A の途中で今すぐ同期 B を押す。B が先に返り、A（古い内容）が後から返る
+        val store = EventWindowStore()
+        val w = EventWindow(nov29)
+        val a = store.markInFlight(w)
+        val b = store.markInFlight(w)
+        val newer = page1().first.filter { it.eventId != "alldaysingle0003" }
+        assertEquals(applied, store.finish(b, ok(newer), tokyo, true))
+        assertEquals(discarded, store.finish(a, ok(page1().first), tokyo, true))
+        assertEquals(newer.map { it.eventId }, store.merged().map { it.eventId })
+    }
+
+    @Test
+    fun olderScrollFetchReturningBeforeSyncNowIsDiscardedAndSyncNowDecides() {
+        val store = EventWindowStore()
+        val w = EventWindow(nov29)
+        val a = store.markInFlight(w)
+        val b = store.markInFlight(w)
+        // 古い A は先に返っても反映しない（失敗でもトーストしない）。取得中の扱いは B が残す
+        assertEquals(discarded, store.finish(a, Result.failure(java.io.IOException("x")), tokyo, true))
+        assertNull(windowToFetch(weeks(nov29, 6), store.coveredWeeks()))
+        assertEquals(applied, store.finish(b, ok(page1().first), tokyo, true))
+        assertEquals(6, store.merged().size)
+    }
+
+    @Test
+    fun syncNowResultIsDiscardedAfterResetOrWhenTicketIsNoLongerCurrent() {
+        // 世代: 同期中にアカウント・タブが変わって reset → 返った結果は新しい状態へ混ざらない
+        val store = EventWindowStore()
+        val w = EventWindow(nov29)
+        store.put(w, page1().first, tokyo)
+        val p = store.markInFlight(w)
+        store.reset()
+        val fresh = store.markInFlight(w) // 新しいアカウントのスクロール由来の取得
+        assertEquals(discarded, store.finish(p, ok(page1().first), tokyo, true))
+        assertTrue(store.merged().isEmpty())
+        assertEquals(applied, store.finish(fresh, ok(page2().first), tokyo, true))
+        assertEquals(page2().first.map { it.eventId }, store.merged().map { it.eventId })
+        // 札: 同じ世代でも、札が古ければ（サインアウト等）成功も失敗も反映しない。取得中の印は外す
+        val q = store.markInFlight(EventWindow(nov29.plusWeeks(6)))
+        assertEquals(discarded, store.finish(q, ok(page1().first), tokyo, stillCurrent = false))
+        assertEquals(page2().first.map { it.eventId }, store.merged().map { it.eventId })
+        assertEquals(EventWindow(nov29.plusWeeks(6)), windowToFetch(weeks(nov29.plusWeeks(6), 6), store.coveredWeeks()))
+    }
 }

@@ -47,6 +47,20 @@ fun windowToFetch(visibleWeekStarts: List<LocalDate>, covered: Set<LocalDate>): 
     visibleWeekStarts.sorted().firstOrNull { it !in covered }?.let(::EventWindow)
 
 /**
+ * V1-4a 今すぐ同期: 取得済みかどうかに関係なく、表示中の週をすべて覆う窓。表示中の最初の週から6週、
+ * 覆いきれない週（行の途中で止まって7週目が見えている等）があれば、その週から6週を続ける。
+ */
+fun windowsToRefresh(visibleWeekStarts: List<LocalDate>): List<EventWindow> {
+    val out = mutableListOf<EventWindow>()
+    val covered = HashSet<LocalDate>()
+    while (true) {
+        val w = windowToFetch(visibleWeekStarts, covered) ?: return out
+        out += w
+        covered += w.weekStarts
+    }
+}
+
+/**
  * events.list の予定1件を [CalEvent] へ変換する。変換しない（null を返す）のは status=cancelled と、
  * start が読めないものだけ。
  *
@@ -239,11 +253,26 @@ object EventsApi {
  */
 class EventWindowStore {
     private val loaded = LinkedHashMap<LocalDate, List<CalEvent>>()
-    private val inFlight = HashSet<LocalDate>()
+    /** 取得中の窓（開始日）→ その窓の最新の要求番号。同じ窓に要求が重なったら最新の要求の結果だけを反映する。 */
+    private val inFlight = HashMap<LocalDate, Long>()
+    private var requestSeq = 0L
 
     /** reset のたびに増える。取得開始時の値と反映時の値が違えば、その結果は捨てる。 */
     var generation = 0L
         private set
+
+    /** 1回の取得要求（[markInFlight] が返す札）。結果は [finish] に渡す。 */
+    class Pending internal constructor(val window: EventWindow, val request: Long, val generation: Long)
+
+    /** 取得の結果をストアへ反映したか。 */
+    sealed interface Outcome {
+        /** 反映した（表示を更新する）。 */
+        data object Applied : Outcome
+        /** 取得に失敗した（既存の予定はそのまま。理由を利用者に知らせる）。 */
+        data class Failed(val error: Throwable) : Outcome
+        /** 古い要求の結果なので捨てた（成功・失敗とも知らせない）。 */
+        data object Discarded : Outcome
+    }
 
     fun reset() {
         loaded.clear(); inFlight.clear(); generation++
@@ -251,10 +280,37 @@ class EventWindowStore {
 
     /** 取得済み＋取得中の週。 */
     fun coveredWeeks(): Set<LocalDate> =
-        (loaded.keys + inFlight).flatMapTo(HashSet()) { EventWindow(it).weekStarts }
+        (loaded.keys + inFlight.keys).flatMapTo(HashSet()) { EventWindow(it).weekStarts }
 
-    fun markInFlight(w: EventWindow) {
-        inFlight += w.start
+    /**
+     * [w] の取得を始める。取得済みの窓でも呼んでよい（V1-4a 今すぐ同期の強制再取得）。
+     * 同じ窓で先に出した要求は、この要求より後に返っても反映されなくなる。
+     */
+    fun markInFlight(w: EventWindow): Pending {
+        val req = ++requestSeq
+        inFlight[w.start] = req
+        return Pending(w, req, generation)
+    }
+
+    /**
+     * [markInFlight] で始めた取得の結果を反映する（スクロール由来・今すぐ同期の共通経路）。
+     * 捨てるのは: reset 後（アカウント・タブが変わった）、[stillCurrent]=false（札が古い）、
+     * 同じ窓に新しい要求が出ている、取り消し（画面を離れた等）。失敗しても取得済みの予定は消さない。
+     * [zone] は取得時の端末タイムゾーン。
+     */
+    fun finish(p: Pending, result: Result<List<CalEvent>>, zone: ZoneId, stillCurrent: Boolean): Outcome {
+        if (p.generation != generation) return Outcome.Discarded
+        if (inFlight[p.window.start] != p.request) return Outcome.Discarded
+        if (!stillCurrent) {
+            fail(p.window)
+            return Outcome.Discarded
+        }
+        val events = result.getOrElse { e ->
+            fail(p.window)
+            return if (e is kotlinx.coroutines.CancellationException) Outcome.Discarded else Outcome.Failed(e)
+        }
+        put(p.window, events, zone)
+        return Outcome.Applied
     }
 
     fun fail(w: EventWindow) {

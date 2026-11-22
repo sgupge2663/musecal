@@ -22,6 +22,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
 
 /**
@@ -66,6 +67,8 @@ class ScreenshotTest {
                             CalendarListEntry("ja.japanese#holiday@group.v.calendar.google.com", "日本の祝日", backgroundColor = "#9a9cff"),
                         )
                     ),
+                    // V1-4a: 今すぐ同期ボタン。最終同期時刻の表示も固定するため、同期済み（09:41）の状態で描く
+                    sync = SyncUi(syncing = false, lastSyncedAt = LocalTime.of(9, 41), enabled = true, onSyncNow = {}),
                 )
             }
         }

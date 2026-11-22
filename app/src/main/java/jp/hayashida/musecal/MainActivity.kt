@@ -102,9 +102,11 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.IOException
 import java.time.DayOfWeek
 import java.time.Duration
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.YearMonth
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -232,39 +234,87 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     var visibleWeeks by remember { mutableStateOf<List<LocalDate>>(emptyList()) }
     var scrollStopSeq by remember { mutableStateOf(0L) }
 
+    // V1-4a: 今すぐ同期の状態（メモリのみ。永続化は V1-4）。syncSeq はアカウント切替で進め、古い同期の後始末を無視する。
+    var syncing by remember { mutableStateOf(false) }
+    var lastSyncedAt by remember { mutableStateOf<LocalTime?>(null) }
+    var syncSeq by remember { mutableStateOf(0L) }
+
+    // トークンは保存せず、取得のたびに取り直す（認可済みなら無言で返る）。取れなければ理由つきで失敗にする。
+    suspend fun calendarToken(): String = when (val access = auth.authorizeCalendar()) {
+        is CalendarAuth.CalendarAccess.Granted -> access.accessToken
+        is CalendarAuth.CalendarAccess.ConsentRequired -> throw IOException("再度の許可が必要です")
+        is CalendarAuth.CalendarAccess.Failed -> throw IOException(access.error.message, access.error)
+    }
+
+    // 1つのカレンダーでも失敗したらそのウィンドウは反映しない（一部だけ出して「予定が無い」と誤解させないため）
+    suspend fun fetchAllTabs(token: String, tabsSnapshot: List<CalendarTab>, window: EventWindow, zone: ZoneId) =
+        coroutineScope {
+            tabsSnapshot.map { tab -> async { EventsApi.fetchWindow(token, tab, window, zone) } }.awaitAll().flatten()
+        }
+
+    // 認可が返った時点で古くなった要求（アカウント切替・サインアウト・タブの取り直し）は通信せずに打ち切る。
+    // 取り消しとして finish に渡るので、失敗としては見せない。
+    fun checkStillCurrent(ticket: AccountRequestGate.Ticket, p: EventWindowStore.Pending) {
+        if (!isCurrent(ticket) || store.generation != p.generation) throw kotlinx.coroutines.CancellationException("stale")
+    }
+
+    fun showFetchFailure(e: Throwable) =
+        Toast.makeText(context, "予定を取得できませんでした: ${e.message}", Toast.LENGTH_LONG).show()
+
+    // スクロール由来の取得。markInFlight は呼び出し元のループの中で同期的に済ませる（続けて取得判定するため）。
     fun fetchEventWindow(ticket: AccountRequestGate.Ticket, tabsSnapshot: List<CalendarTab>, window: EventWindow) {
-        val gen = store.generation
-        store.markInFlight(window)
+        val pending = store.markInFlight(window)
         val zone = ZoneId.systemDefault()
         scope.launch {
-            // トークンは保存せず、取得のたびに取り直す（認可済みなら無言で返る）。
-            val access = auth.authorizeCalendar()
-            // アカウント切替・サインアウト・タブの取り直しの後に返った結果は捨てる（成功・失敗とも）
-            fun stale() = !isCurrent(ticket) || store.generation != gen
-            if (stale()) return@launch
-            val token = when (access) {
-                is CalendarAuth.CalendarAccess.Granted -> access.accessToken
-                is CalendarAuth.CalendarAccess.ConsentRequired, is CalendarAuth.CalendarAccess.Failed -> {
-                    store.fail(window)
-                    val why = (access as? CalendarAuth.CalendarAccess.Failed)?.error?.message ?: "再度の許可が必要です"
-                    Toast.makeText(context, "予定を取得できませんでした: $why", Toast.LENGTH_LONG).show()
-                    return@launch
-                }
-            }
-            // 1つのカレンダーでも失敗したらそのウィンドウは反映しない（一部だけ出して「予定が無い」と誤解させないため）
             val result = runCatching {
-                coroutineScope {
-                    tabsSnapshot.map { tab -> async { EventsApi.fetchWindow(token, tab, window, zone) } }.awaitAll().flatten()
-                }
+                val token = calendarToken()
+                checkStillCurrent(ticket, pending)
+                fetchAllTabs(token, tabsSnapshot, window, zone)
             }
-            if (stale()) return@launch
-            result
-                .onSuccess { store.put(window, it, zone); events = store.merged() }
-                .onFailure {
-                    store.fail(window)
-                    if (it is kotlinx.coroutines.CancellationException) return@launch // 画面を離れた等。失敗として見せない
-                    Toast.makeText(context, "予定を取得できませんでした: ${it.message}", Toast.LENGTH_LONG).show()
+            // アカウント切替・サインアウト・タブの取り直し・同じ窓への新しい要求の後に返った結果は捨てる（成功・失敗とも）
+            when (val o = store.finish(pending, result, zone, isCurrent(ticket))) {
+                EventWindowStore.Outcome.Applied -> events = store.merged()
+                is EventWindowStore.Outcome.Failed -> showFetchFailure(o.error)
+                EventWindowStore.Outcome.Discarded -> Unit
+            }
+        }
+    }
+
+    // V1-4a 今すぐ同期: 表示中の週を、取得済みでも取り直す（スクロール停止時の「取得済みなら取らない」を通らない）。
+    // 取得・反映はスクロール由来と同じ経路（札・世代・窓ごとの要求番号）。失敗しても表示中の予定は消さない。
+    fun syncNow() {
+        val ticket = activeTicket ?: return
+        if (syncing || tabs.isEmpty() || !isCurrent(ticket)) return
+        val windows = windowsToRefresh(visibleWeeks)
+        if (windows.isEmpty()) return
+        val tabsSnapshot = tabs
+        val zone = ZoneId.systemDefault()
+        val pendings = windows.map(store::markInFlight)
+        val seq = ++syncSeq
+        syncing = true
+        scope.launch {
+            try {
+                val token = runCatching { calendarToken() }
+                val outcomes = coroutineScope {
+                    pendings.map { p ->
+                        async {
+                            p to runCatching {
+                                checkStillCurrent(ticket, p)
+                                fetchAllTabs(token.getOrThrow(), tabsSnapshot, p.window, zone)
+                            }
+                        }
+                    }.awaitAll()
+                }.map { (p, r) -> store.finish(p, r, zone, isCurrent(ticket)) }
+                if (outcomes.any { it == EventWindowStore.Outcome.Applied }) events = store.merged()
+                if (seq != syncSeq) return@launch
+                val failure = outcomes.firstNotNullOfOrNull { (it as? EventWindowStore.Outcome.Failed)?.error }
+                when {
+                    failure != null -> showFetchFailure(failure)
+                    outcomes.all { it == EventWindowStore.Outcome.Applied } -> lastSyncedAt = LocalTime.now()
                 }
+            } finally {
+                if (seq == syncSeq) syncing = false
+            }
         }
     }
 
@@ -323,6 +373,10 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     // 認可済みなら同意画面は出ずにトークンが返る。サインアウトしたらタブを消し、進行中の要求の札を無効にする。
     LaunchedEffect(current?.email) {
         tabs = emptyList()
+        // V1-4a: 同期の表示は前のアカウントのものなので消す（進行中の同期の後始末は seq で無視される）
+        syncSeq++
+        syncing = false
+        lastSyncedAt = null
         val email = current?.email
         if (email == null) {
             gate.invalidate()
@@ -359,6 +413,12 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
             onSignOut = { scope.launch { auth.signOut() } },
             tabs = tabs,
             onVisibleWeeksChange = { visibleWeeks = it; scrollStopSeq++ },
+            sync = SyncUi(
+                syncing = syncing,
+                lastSyncedAt = lastSyncedAt,
+                enabled = tabs.isNotEmpty() && visibleWeeks.isNotEmpty(),
+                onSyncNow = { syncNow() },
+            ),
         )
     }
 }
@@ -453,6 +513,8 @@ fun MuseCalApp(
     tabs: List<CalendarTab>,
     /** V1-3: スクロールが止まるたびに（同じ週でも）、表示中の週（各週の日曜）を知らせる。予定の取得範囲の判定に使う。 */
     onVisibleWeeksChange: (List<LocalDate>) -> Unit = {},
+    /** V1-4a: 今すぐ同期ボタンの状態。null ならボタンを出さない。 */
+    sync: SyncUi? = null,
 ) {
     val context = LocalContext.current
     // 非表示にしたカレンダーの calendarId
@@ -511,6 +573,8 @@ fun MuseCalApp(
                 accountEmail, color = Color(0xFFBBBBBB), fontSize = 12.sp,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
             )
+            // V1-4a：今すぐ同期（同期中は押せず「同期中…」。成功したら最終同期時刻を左に出す）
+            sync?.let { SyncNowControl(it) }
             Text(
                 "サインアウト", color = Color.White, fontSize = 12.sp,
                 modifier = Modifier.clickable(onClick = onSignOut).padding(horizontal = 8.dp, vertical = 2.dp),
@@ -562,6 +626,29 @@ fun MuseCalApp(
     }
 
     popupDate?.let { d -> DayPopup(d, index.eventsOn(d)) { popupDate = null } }
+}
+
+/** V1-4a: 今すぐ同期ボタンに渡す状態。最終同期時刻は今すぐ同期が成功したときだけ更新する（メモリのみ）。 */
+data class SyncUi(
+    val syncing: Boolean,
+    val lastSyncedAt: LocalTime?,
+    val enabled: Boolean,
+    val onSyncNow: () -> Unit,
+)
+
+private val SYNC_HM = DateTimeFormatter.ofPattern("HH:mm")
+
+@Composable
+private fun SyncNowControl(s: SyncUi) {
+    s.lastSyncedAt?.let {
+        Text("最終同期 ${it.format(SYNC_HM)}", color = Color(0xFFBBBBBB), fontSize = 11.sp, maxLines = 1)
+    }
+    val canPress = s.enabled && !s.syncing
+    Text(
+        if (s.syncing) "同期中…" else "今すぐ同期",
+        color = if (canPress) Color.White else Color(0xFF777777), fontSize = 12.sp, maxLines = 1,
+        modifier = Modifier.clickable(enabled = canPress, onClick = s.onSyncNow).padding(horizontal = 8.dp, vertical = 2.dp),
+    )
 }
 
 @Composable

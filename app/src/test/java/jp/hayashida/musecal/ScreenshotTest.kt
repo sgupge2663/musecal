@@ -130,13 +130,37 @@ class ScreenshotTest {
                     EventDraft(title = "祝日", start = fixedToday.atStartOfDay(),
                         end = fixedToday.atStartOfDay(), allDay = true, calendarId = "test"),
                     listOf(CalendarTab("test", "祝日", androidx.compose.ui.graphics.Color.Gray)),
-                    editing = true, readOnly = true, onCancel = {}, onSave = { error("must not save") },
+                    editing = true, readOnly = true, onDelete = { error("must not delete") }, onCancel = {}, onSave = { error("must not save") },
                 )
             }
         }
+        composeRule.onNodeWithText("予定を削除").assertDoesNotExist()
         composeRule.onNodeWithText("予定の詳細").assertIsDisplayed()
         composeRule.onNodeWithText("保存").assertIsNotEnabled()
         composeRule.onNodeWithText("祝日", substring = false).assertIsNotEnabled()
+    }
+
+    @Test fun eventEditor_deleteNeedsConfirmationAndScope() {
+        val sent = mutableListOf<DeleteScope>()
+        composeRule.setContent {
+            MaterialTheme(colorScheme = lightColorScheme()) {
+                EventEditor(
+                    EventDraft(title = "削除対象", start = fixedToday.atTime(9, 0), end = fixedToday.atTime(10, 0), calendarId = "test"),
+                    listOf(CalendarTab("test", "メイン", androidx.compose.ui.graphics.Color.Gray)),
+                    editing = true, calendarLocked = true, onDelete = { sent += it }, onCancel = {}, onSave = {},
+                )
+            }
+        }
+        composeRule.onNodeWithText("予定を削除").performClick()
+        org.junit.Assert.assertTrue(sent.isEmpty())
+        composeRule.onNodeWithText("「削除対象」を削除します。削除は取り消せません。").assertIsDisplayed()
+        composeRule.onNode(isDialog()).captureRoboImage(File("src/test/screenshots/event_delete_confirmation.png"))
+        composeRule.onAllNodesWithText("キャンセル").onLast().performClick()
+        org.junit.Assert.assertTrue(sent.isEmpty())
+        composeRule.onNodeWithText("予定を削除").performClick()
+        composeRule.onNodeWithText("○ すべての予定").performClick()
+        composeRule.onNodeWithText("削除", substring = false).performClick()
+        org.junit.Assert.assertEquals(listOf(DeleteScope.ALL_EVENTS), sent)
     }
 
     @Test fun eventEditor_edit() {
@@ -147,7 +171,7 @@ class ScreenshotTest {
                         end = fixedToday.atTime(10, 0), calendarId = "test",
                         location = "会議室", description = "議題を確認する"),
                     listOf(CalendarTab("test", "メイン", androidx.compose.ui.graphics.Color.Gray)),
-                    editing = true, onCancel = {}, onSave = {},
+                    editing = true, onDelete = {}, onCancel = {}, onSave = {},
                 )
             }
         }

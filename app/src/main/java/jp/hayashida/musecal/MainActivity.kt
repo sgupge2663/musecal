@@ -524,6 +524,33 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
             editing = editingEvent != null,
             readOnly = editingEvent?.let { e -> e.eventId == null || writableTabs.none { it.calendarId == e.calendarId } } ?: false,
             calendarLocked = editingEvent?.recurringEventId != null,
+            deleteTitle = editingEvent?.title.orEmpty(),
+            onDelete = editingEvent?.let { original -> { deleteScope ->
+                val ticket = activeTicket
+                val id = deletionEventId(original, writableTabs.any { it.calendarId == original.calendarId }, true, deleteScope)
+                if (ticket != null && isCurrent(ticket) && !saving && id != null) {
+                    saving = true
+                    saveError = null
+                    scope.launch {
+                        try {
+                            val token = calendarToken()
+                            if (!isCurrent(ticket)) return@launch
+                            require(writableTabs.any { it.calendarId == original.calendarId })
+                            EventsApi.delete(token, original.calendarId, id)
+                            if (isCurrent(ticket)) {
+                                editor = null
+                                syncNow((store.snapshot().windows.keys.map { EventWindow(it) } + EventWindow(sundayOf(original.startDate))).distinct())
+                            }
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            if (isCurrent(ticket)) saveError = "削除できませんでした。" + writeFailureMessage(e).replace("保存", "削除") + "「予定を削除」から再試行してください。"
+                        } finally {
+                            if (isCurrent(ticket)) saving = false
+                        }
+                    }
+                }
+            } },
             onCancel = { editor = null },
             onSave = { draft ->
                 val ticket = activeTicket

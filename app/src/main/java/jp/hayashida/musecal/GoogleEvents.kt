@@ -217,6 +217,18 @@ object EventsApi {
         } finally { conn.disconnect() }
     }
 
+    suspend fun delete(accessToken: String, calendarId: String, eventId: String) = withContext(Dispatchers.IO) {
+        val conn = URL(BASE + pathSegment(calendarId) + "/events/" + pathSegment(eventId)).openConnection() as HttpURLConnection
+        try {
+            conn.requestMethod = "DELETE"
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 15_000
+            conn.setRequestProperty("Authorization", "Bearer $accessToken")
+            if (conn.responseCode !in 200..299) throw HttpError(conn.responseCode, "予定の削除に失敗しました")
+            Unit // events.delete の成功応答は空本文
+        } finally { conn.disconnect() }
+    }
+
     suspend fun move(accessToken: String, original: CalEvent, destination: String): CalEvent = withContext(Dispatchers.IO) {
         require(original.recurringEventId == null)
         val url = BASE + pathSegment(original.calendarId) + "/events/" + pathSegment(requireNotNull(original.eventId)) +

@@ -72,6 +72,14 @@ fun updateEventBody(current: JSONObject, draft: EventDraft, zone: ZoneId): JSONO
 internal fun writeFailureMessage(error: Throwable): String =
     fetchFailureMessage(error).replace("読み取り", "書き込み").replace("から取得", "に保存").replace("取得", "保存")
 
+internal enum class DeleteScope { THIS_EVENT, ALL_EVENTS }
+
+/** 未確認・読み取り専用・ID不明ならAPIへ進ませない。 */
+internal fun deletionEventId(event: CalEvent, writable: Boolean, confirmed: Boolean, scope: DeleteScope): String? {
+    if (!writable || !confirmed || event.eventId.isNullOrBlank()) return null
+    return if (scope == DeleteScope.ALL_EVENTS) event.recurringEventId ?: event.eventId else event.eventId
+}
+
 /** 作成・後続の編集で使うフォーム。通信と画面遷移は呼び出し側が持つ。 */
 @Composable
 internal fun EventEditor(
@@ -82,9 +90,13 @@ internal fun EventEditor(
     editing: Boolean = false,
     readOnly: Boolean = false,
     calendarLocked: Boolean = false,
+    deleteTitle: String = initial.title,
+    onDelete: ((DeleteScope) -> Unit)? = null,
     onCancel: () -> Unit,
     onSave: (EventDraft) -> Unit,
 ) {
+    var confirmingDelete by remember { mutableStateOf(false) }
+    var deleteScope by remember { mutableStateOf(DeleteScope.THIS_EVENT) }
     var title by rememberSaveable { mutableStateOf(initial.title) }
     var startText by rememberSaveable { mutableStateOf(initial.start.toString()) }
     var endText by rememberSaveable { mutableStateOf(initial.end.toString()) }
@@ -105,11 +117,14 @@ internal fun EventEditor(
             Text(if (readOnly) "予定の詳細" else if (editing) "予定の編集" else "予定の作成", color = Color.White, modifier = Modifier.padding(top = 12.dp))
             TextButton(onClick = { onSave(draft) },
                 enabled = !readOnly && !saving && draft.valid() && calendars.any { it.calendarId == calendarId }) {
-                Text(if (saving) "保存中…" else if (error != null) "再試行" else "保存", color = Color.White)
+                Text(if (saving) "保存中…" else if (error != null && !error.startsWith("削除できませんでした。")) "再試行" else "保存", color = Color.White)
             }
         }
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (editing && !readOnly && onDelete != null) {
+                OutlinedButton(onClick = { confirmingDelete = true }, enabled = !saving) { Text("予定を削除", color = MaterialTheme.colorScheme.error) }
+            }
             if (readOnly) Text("読み取り専用の予定です。")
             if (error != null) Text(error, color = Color(0xFF993300))
             OutlinedTextField(title, { title = it }, label = { Text("タイトル") }, enabled = !saving && !readOnly, modifier = Modifier.fillMaxWidth())
@@ -132,6 +147,24 @@ internal fun EventEditor(
         }
     }
     }
+    if (confirmingDelete && !readOnly && onDelete != null) {
+        AlertDialog(
+            onDismissRequest = { if (!saving) confirmingDelete = false },
+            title = { Text("予定の削除") },
+            text = {
+                Column {
+                    Text("「$deleteTitle」を削除します。削除は取り消せません。")
+                    if (calendarLocked) {
+                        TextButton(onClick = { deleteScope = DeleteScope.THIS_EVENT }) { Text((if (deleteScope == DeleteScope.THIS_EVENT) "● " else "○ ") + "この予定のみ") }
+                        TextButton(onClick = { deleteScope = DeleteScope.ALL_EVENTS }) { Text((if (deleteScope == DeleteScope.ALL_EVENTS) "● " else "○ ") + "すべての予定") }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { confirmingDelete = false; onDelete(deleteScope) }, enabled = !saving) { Text("削除") } },
+            dismissButton = { TextButton(onClick = { confirmingDelete = false }, enabled = !saving) { Text("キャンセル") } },
+        )
+    }
+
 }
 
 @Composable

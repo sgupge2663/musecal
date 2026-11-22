@@ -214,3 +214,8 @@ QC-03（終日・時間指定のレイアウト）、QC-04/05/07/08、および 
 - `ScreenshotTest.eventEditor_edit`: タイトル・開始終了・終日・カレンダー・色・場所・説明の初期表示。基準: `app/src/test/screenshots/event_editor_edit.png`。一次目視で全項目と保存ボタンが表示され、重なりなし。ユーザー受理待ち。
 - `eventEditor_readOnlyCannotSave`: 読み取り専用詳細の保存禁止。
 - 実サーバー更新・繰り返し例外・カレンダー移動とWeb照合は QC-12 で実機確認待ち。
+
+### V2-4 削除の一次確認（2026-11-23 / Codex）
+- 固定ケース: EventEditTest の削除ID（単体／インスタンス／シリーズ）・権限／未確認禁止。ScreenshotTest の確認前0回、キャンセル0回、範囲選択して確認後1回、読取専用で削除ボタンなし。
+- 証拠: `app/src/test/screenshots/event_editor_edit.png`、`event_delete_confirmation.png`。一次目視で削除ボタン・予定タイトル・不可逆の警告・範囲選択・確認／キャンセルの表示を確認。
+- 実サーバー／Web照合・端末の操作感は QC-12 / V2-5 へ。ユーザーの見た目判定は受理待ち。

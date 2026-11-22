@@ -15,6 +15,18 @@ class EventEditTest {
       "end":${if (allDay) """{"date":"2026-12-18"}""" else """{"dateTime":"2026-12-17T00:00:00+09:00"}"""}
     }"""), CalendarTab("test", "メイン", Color.Gray), zone)!!
 
+    @Test fun deletionRequiresPermissionConfirmationAndCorrectIdentity() {
+        val instance = event(true)
+        val single = instance.copy(recurringEventId = null)
+        assertEquals("instance", deletionEventId(single, true, true, DeleteScope.THIS_EVENT))
+        assertEquals("instance", deletionEventId(instance, true, true, DeleteScope.THIS_EVENT))
+        assertEquals("master", deletionEventId(instance, true, true, DeleteScope.ALL_EVENTS))
+        for (scope in DeleteScope.values()) {
+            assertNull(deletionEventId(instance, false, true, scope))
+            assertNull(deletionEventId(instance, true, false, scope))
+            assertNull(deletionEventId(instance.copy(eventId = null), true, true, scope))
+        }
+    }
     @Test fun initialValuesAndRecurringIdentity() {
         val e = event(true)
         val d = e.toDraft()

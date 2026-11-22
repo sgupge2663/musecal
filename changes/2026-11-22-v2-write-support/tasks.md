@@ -17,10 +17,11 @@
     - 訂正（2026-11-22）: main 最新の proposal.md 決定1を確認し、REQUESTED_SCOPE_URIS を calendar.events ＋ calendar.calendarlist.readonly の2件へ修正。CalendarAuthTest は URI 定義と実際の Scope 一覧がこの2件だけであることを検証する。独立レビューで指摘なし（STATUS.md と制約対象に変更なし）。訂正後も本体の scripts/env.sh を source して ./scripts/check.sh 成功（assembleDebug / testDebugUnitTest / lintDebug OK、CalendarAuthTest 4件・失敗0・エラー0）。共有 Gradle キャッシュへの書き込みに実行権限拡張を使用。
     - 検証: 本体の scripts/env.sh を source して ./scripts/check.sh 成功（assembleDebug / testDebugUnitTest / lintDebug OK、CalendarAuthTest 4件・失敗0）。共有 Gradle キャッシュの書き込みに実行権限拡張を使用。PKIX 失敗なし。実機での再同意・読み取り確認は未実施。Google Cloud コンソール・STATUS.md は未変更。
 
-- [ ] V2-2 予定の作成
+- [x] V2-2 予定の作成
   - 内容: 新規作成の入口（月表示のボタン）と編集画面（タイトル・開始・終了・終日・カレンダー・色・場所・説明）、events.insert、成功後に該当窓を再取得して表示・キャッシュを一致させる。失敗時は日本語エラー＋再試行、入力内容は保持する
   - 完了条件: アプリで作った予定がサーバーに登録され、再取得後の表示とキャッシュが一致する
   - 検証方法: テスト＋check.sh＋一次判定（スクショ）。Web 側での一致は QC-12（V2-5）
+  - 統合: 2026-11-22、Muse がレビュー（work/v22/muse-review-14c1cce.md、受理可）のうえ main へ統合
 
   - 実装計画（V2-2）: 既存の認可・同期を再利用し、トークン非保存・依存追加なしで作成する。最新 calendarList の accessRole が owner/writer のものだけを選択可能にする。順序はリクエスト変換と単体テスト→共用フォームと月表示入口→insert と同期接続→スクショ・check.sh→独立レビュー。成功基準は変換テスト・画面基準・既存チェック成功。実サーバー照合と見た目の最終受理はユーザー確認待ち。編集・削除・STATUS 更新は対象外。未解決: 実機照合は V2-5 へ引き継ぐ。
 

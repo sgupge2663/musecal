@@ -122,6 +122,7 @@
   - 回帰テスト: 注入日 2026-11-22 で11月表示 → 月送りで12月 → today を2027-01-01へ更新しても12月維持 →「今日」で1月表示。
   - 検証: 主作業ツリーの scripts/env.sh を source 後、./scripts/check.sh 成功（assembleDebug / testDebugUnitTest / lintDebug）。77件、失敗0、省略1。既存 Roborazzi 基準画像の比較も成功し、再記録なし。初回は依存取得の Connection refused（既存中継プロキシ未起動）で8件失敗し、既存 auth_relay_proxy.py を一時起動して解消。PKIX なし。git diff --check 成功。
   - 独立レビュー: 別 Codex エージェントが仕様と照合、実装への指摘なし。today 更新タイミングの記録表現のみ修正済み。実機スクショとユーザー判定は v0.9 で受理待ちのためチェック欄は未完了を維持。STATUS.md は変更しない。
+  - レビュー（2026-11-22、Muse）: **受理可、指摘なし**。記録は work/v15b/muse-review-29c7c78.md
 
 - [ ] V1-6 仕様 converge と QC 記録
   - 内容: REQUIREMENTS.md に「データ連携」節を正本化（proposal の追記案を承認どおり反映）。docs/qc.md に実機照合の記録（QC-11 として追加を検討）

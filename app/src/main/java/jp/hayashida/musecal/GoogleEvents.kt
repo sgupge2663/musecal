@@ -198,6 +198,23 @@ object EventsApi {
         }
     }
 
+    suspend fun insert(accessToken: String, draft: EventDraft, zone: ZoneId) = withContext(Dispatchers.IO) {
+        val conn = URL(BASE + pathSegment(draft.calendarId) + "/events").openConnection() as HttpURLConnection
+        try {
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 15_000
+            conn.doOutput = true
+            conn.setRequestProperty("Authorization", "Bearer $accessToken")
+            conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+            conn.outputStream.use { it.write(createEventBody(draft, zone).toString().toByteArray(Charsets.UTF_8)) }
+            val code = conn.responseCode
+            if (code !in 200..299) throw HttpError(code, "予定の保存に失敗しました")
+            conn.inputStream.use { it.readBytes() }
+            Unit
+        } finally { conn.disconnect() }
+    }
+
     /** 安全上限。1ページ最大2500件なので、6週分でここに届くのは API の異常（同じトークンの繰り返し等）とみなす。 */
     const val MAX_PAGES = 50
 

@@ -27,6 +27,7 @@ data class CalendarListEntry(
     /** "#rrggbb"。 */
     val backgroundColor: String? = null,
     val primary: Boolean = false,
+    val accessRole: String = "",
 )
 
 /** 下部タブ1つ。[color] は色線（カレンダー色）。 */
@@ -104,6 +105,7 @@ fun parseCalendarListPage(json: String): Pair<List<CalendarListEntry>, String?> 
             summaryOverride = it.optString("summaryOverride", "").ifEmpty { null },
             backgroundColor = it.optString("backgroundColor", "").ifEmpty { null },
             primary = it.optBoolean("primary", false),
+            accessRole = it.optString("accessRole", ""),
         )
     }
     val next = o.optString("nextPageToken", "").ifEmpty { null }
@@ -113,7 +115,7 @@ fun parseCalendarListPage(json: String): Pair<List<CalendarListEntry>, String?> 
 /** Calendar API v3 calendarList.list を直接呼ぶ（google-api-client は入れない。必要なのは GET 1種だけのため）。 */
 object CalendarListApi {
     private const val ENDPOINT = "https://www.googleapis.com/calendar/v3/users/me/calendarList"
-    private const val FIELDS = "items(id,summary,summaryOverride,backgroundColor,primary),nextPageToken"
+    private const val FIELDS = "items(accessRole,id,summary,summaryOverride,backgroundColor,primary),nextPageToken"
 
     class HttpError(val code: Int, message: String) : IOException(message)
 

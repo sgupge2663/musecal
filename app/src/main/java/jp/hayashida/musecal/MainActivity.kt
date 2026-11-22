@@ -212,6 +212,10 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     val scope = rememberCoroutineScope()
 
     // V1-2: calendarList から対応づけた下部タブ。取得できるまでは空（サンプルのタブで実データを装わない）。
+    var writableTabs by remember { mutableStateOf<List<CalendarTab>>(emptyList()) }
+    var editor by remember { mutableStateOf<EventDraft?>(null) }
+    var saving by remember { mutableStateOf(false) }
+    var saveError by remember { mutableStateOf<String?>(null) }
     var tabs by remember { mutableStateOf<List<CalendarTab>>(emptyList()) }
 
     // 取得要求をアカウントに紐づける札。結果は「札が最新」かつ「今もそのアカウントでサインイン中」のときだけ反映する
@@ -307,10 +311,10 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
 
     // V1-5c 再試行・今すぐ同期: 表示中の週と失敗した窓を、取得済みでも取り直す（スクロール停止時の「取得済みなら取らない」を通らない）。
     // 取得・反映はスクロール由来と同じ経路（札・世代・窓ごとの要求番号）。失敗しても表示中の予定は消さない。
-    fun syncNow() {
+    fun syncNow(extra: List<EventWindow> = emptyList()) {
         val ticket = activeTicket ?: return
-        if (syncing || accessing || tabs.isEmpty() || !isCurrent(ticket)) return
-        val windows = windowsToRefresh(visibleWeeks, fetchErrors.keys.filterNotNull())
+        if ((syncing && extra.isEmpty()) || accessing || tabs.isEmpty() || !isCurrent(ticket)) return
+        val windows = (windowsToRefresh(visibleWeeks, fetchErrors.keys.filterNotNull()) + extra).distinct()
         if (windows.isEmpty()) return
         val tabsSnapshot = tabs
         val zone = ZoneId.systemDefault()
@@ -352,6 +356,7 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
             result
                 .onSuccess {
                     fetchErrors = fetchErrors - null
+                    writableTabs = writableCalendars(it)
                     val updated = mapCalendarTabs(it)
                     if (tabs != updated) {
                         store.reset()
@@ -410,6 +415,10 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     // サインイン済みのアカウントが決まるたびに（サインイン直後・再起動時）カレンダー一覧を取り直す。
     // 認可済みなら同意画面は出ずにトークンが返る。サインアウトしたらタブを消し、進行中の要求の札を無効にする。
     LaunchedEffect(current?.email) {
+        editor = null
+        saveError = null
+        saving = false
+        writableTabs = emptyList()
         tabs = emptyList()
         // V1-4a: 同期の表示は前のアカウントのものなので消す（進行中の同期の後始末は seq で無視される）
         syncSeq++
@@ -460,11 +469,17 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     if (current == null) {
         SignInScreen(auth) {}
     } else {
+      Box {
         MuseCalApp(
             if (dataEmail == current.email) events else emptyList(), todayState,
             accountEmail = current.email,
             onSignOut = { scope.launch { auth.signOut() } },
             tabs = if (dataEmail == current.email) tabs else emptyList(),
+            onCreate = {
+                val start = todayState.value.atTime(9, 0)
+                editor = EventDraft(start = start, end = start.plusHours(1), calendarId = writableTabs.firstOrNull()?.calendarId.orEmpty())
+                saveError = null
+            },
             onVisibleWeeksChange = { visibleWeeks = it; scrollStopSeq++ },
             failure = if (dataEmail == current.email) fetchError?.let {
                 FetchFailureUi(it, fetchedAt, syncing || accessing) {
@@ -482,6 +497,36 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
                 onSyncNow = { syncNow() },
             ),
         )
+        if (editor != null) {
+        EventEditor(editor!!, writableTabs, saving, saveError,
+            onCancel = { editor = null },
+            onSave = { draft ->
+                val ticket = activeTicket
+                if (ticket != null && isCurrent(ticket) && !saving) {
+                    saving = true
+                    saveError = null
+                    scope.launch {
+                        try {
+                            val token = calendarToken()
+                            if (!isCurrent(ticket)) return@launch
+                            require(writableTabs.any { it.calendarId == draft.calendarId })
+                            EventsApi.insert(token, draft, ZoneId.systemDefault())
+                            if (isCurrent(ticket)) {
+                                editor = null
+                                syncNow(listOf(EventWindow(sundayOf(draft.start.toLocalDate()))))
+                            }
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            if (isCurrent(ticket)) saveError = writeFailureMessage(e)
+                        } finally {
+                            if (isCurrent(ticket)) saving = false
+                        }
+                    }
+                }
+            })
+        }
+      }
     }
 }
 
@@ -578,6 +623,7 @@ fun MuseCalApp(
     /** V1-4a: 今すぐ同期ボタンの状態。null ならボタンを出さない。 */
     sync: SyncUi? = null,
     failure: FetchFailureUi? = null,
+    onCreate: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     // 非表示にしたカレンダーの calendarId
@@ -627,6 +673,7 @@ fun MuseCalApp(
             HeaderButton("›") { scrollToMonth(displayMonthState.value.plusMonths(1)) }
             Spacer(Modifier.weight(1f))
             // 押した時点の現在日へ（T-102）
+            if (onCreate != null) HeaderButton("＋", onCreate)
             HeaderButton("今日") { scrollToMonth(YearMonth.from(todayState.value)) }
         }
         // V1-1：ログイン中アカウントの表示とサインアウト（ヘッダーの黒基調に続く細い帯）

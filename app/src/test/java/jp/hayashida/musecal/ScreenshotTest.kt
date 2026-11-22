@@ -86,6 +86,43 @@ class ScreenshotTest {
         composeRule.waitForIdle()
     }
 
+    @Test fun eventEditor_failureKeepsInputAndRetries() {
+        val error = mutableStateOf<String?>(null)
+        val sent = mutableListOf<EventDraft>()
+        composeRule.setContent {
+            MaterialTheme(colorScheme = lightColorScheme()) {
+                EventEditor(
+                    EventDraft(start = fixedToday.atTime(9, 0), end = fixedToday.atTime(10, 0), calendarId = "test"),
+                    listOf(CalendarTab("test", "メイン", androidx.compose.ui.graphics.Color.Gray)),
+                    error = error.value, onCancel = {},
+                    onSave = { sent += it; error.value = writeFailureMessage(java.io.IOException()) },
+                )
+            }
+        }
+        composeRule.onNodeWithText("タイトル").performTextInput("保持する予定")
+        composeRule.onNodeWithText("保存").performClick()
+        composeRule.onNodeWithText("保持する予定").assertIsDisplayed()
+        composeRule.onNodeWithText("再試行").performClick()
+        org.junit.Assert.assertEquals(2, sent.size)
+        org.junit.Assert.assertEquals(sent[0], sent[1])
+    }
+
+    @Test fun eventEditor_create() {
+        composeRule.setContent {
+            MaterialTheme(colorScheme = lightColorScheme()) {
+                EventEditor(
+                    EventDraft(title = "打ち合わせ", start = fixedToday.atTime(9, 0),
+                        end = fixedToday.atTime(10, 0), calendarId = "test",
+                        location = "会議室", description = "議題を確認する"),
+                    listOf(CalendarTab("test", "メイン", androidx.compose.ui.graphics.Color.Gray)),
+                    onCancel = {}, onSave = {},
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onRoot().captureRoboImage(File("src/test/screenshots/event_editor_create.png"))
+    }
+
     @Test
     fun initialMonth_usesInjectedToday_andDoesNotResetOnTodayChange() {
         val today = mutableStateOf(LocalDate.of(2026, 11, 22))

@@ -55,6 +55,20 @@ fun createEventBody(d: EventDraft, zone: ZoneId): JSONObject {
     }
 }
 
+fun CalEvent.toDraft(): EventDraft = EventDraft(
+    title, start?.toLocalDateTime() ?: startDate.atStartOfDay(),
+    end?.toLocalDateTime() ?: endDateInclusive.atStartOfDay(), allDay,
+    calendarId, colorId, location, description,
+)
+
+fun updateEventBody(current: JSONObject, draft: EventDraft, zone: ZoneId): JSONObject {
+    val result = JSONObject(current.toString())
+    val edited = createEventBody(draft, zone)
+    edited.keys().forEach { result.put(it, edited.get(it)) }
+    if (draft.colorId == null) result.remove("colorId")
+    return result
+}
+
 internal fun writeFailureMessage(error: Throwable): String =
     fetchFailureMessage(error).replace("読み取り", "書き込み").replace("から取得", "に保存").replace("取得", "保存")
 
@@ -65,6 +79,9 @@ internal fun EventEditor(
     calendars: List<CalendarTab>,
     saving: Boolean = false,
     error: String? = null,
+    editing: Boolean = false,
+    readOnly: Boolean = false,
+    calendarLocked: Boolean = false,
     onCancel: () -> Unit,
     onSave: (EventDraft) -> Unit,
 ) {
@@ -85,32 +102,33 @@ internal fun EventEditor(
         Row(Modifier.fillMaxWidth().background(Color.Black).padding(8.dp),
             horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = onCancel, enabled = !saving) { Text("キャンセル", color = Color.White) }
-            Text("予定の作成", color = Color.White, modifier = Modifier.padding(top = 12.dp))
+            Text(if (readOnly) "予定の詳細" else if (editing) "予定の編集" else "予定の作成", color = Color.White, modifier = Modifier.padding(top = 12.dp))
             TextButton(onClick = { onSave(draft) },
-                enabled = !saving && draft.valid() && calendars.any { it.calendarId == calendarId }) {
+                enabled = !readOnly && !saving && draft.valid() && calendars.any { it.calendarId == calendarId }) {
                 Text(if (saving) "保存中…" else if (error != null) "再試行" else "保存", color = Color.White)
             }
         }
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (readOnly) Text("読み取り専用の予定です。")
             if (error != null) Text(error, color = Color(0xFF993300))
-            OutlinedTextField(title, { title = it }, label = { Text("タイトル") }, enabled = !saving, modifier = Modifier.fillMaxWidth())
-            Row { Text("終日", modifier = Modifier.weight(1f).padding(top = 12.dp)); Switch(allDay, { allDay = it }, enabled = !saving) }
-            DateTimeInput("開始", start, allDay, !saving) { startText = it.toString() }
-            DateTimeInput("終了", end, allDay, !saving) { endText = it.toString() }
+            OutlinedTextField(title, { title = it }, label = { Text("タイトル") }, enabled = !saving && !readOnly, modifier = Modifier.fillMaxWidth())
+            Row { Text("終日", modifier = Modifier.weight(1f).padding(top = 12.dp)); Switch(allDay, { allDay = it }, enabled = !saving && !readOnly) }
+            DateTimeInput("開始", start, allDay, !saving && !readOnly) { startText = it.toString() }
+            DateTimeInput("終了", end, allDay, !saving && !readOnly) { endText = it.toString() }
             if (!draft.valid()) Text("終了は開始より後にしてください（終日は同日可）。", color = Color.Red)
-            EditorChoice("カレンダー", calendars.firstOrNull { it.calendarId == calendarId }?.label ?: "選択してください", !saving) {
+            EditorChoice("カレンダー", calendars.firstOrNull { it.calendarId == calendarId }?.label ?: "選択してください", !saving && !readOnly && !calendarLocked) {
                 calendars.forEach { c -> DropdownMenuItem(text = { Text(c.label) }, onClick = { calendarId = c.calendarId; it() }) }
             }
             if (calendars.isEmpty()) Text("書き込み可能なカレンダーがありません。")
-            EditorChoice("色", colorId?.let { "● 色 $it" } ?: "色なし（カレンダー色）", !saving) { close ->
+            EditorChoice("色", colorId?.let { "● 色 $it" } ?: "色なし（カレンダー色）", !saving && !readOnly) { close ->
                 DropdownMenuItem(text = { Text("色なし（カレンダー色）") }, onClick = { colorId = null; close() })
                 GoogleEventColors.forEach { (id, color) ->
                     DropdownMenuItem(text = { Text("● 色 $id", color = color) }, onClick = { colorId = id; close() })
                 }
             }
-            OutlinedTextField(location, { location = it }, label = { Text("場所") }, enabled = !saving, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(description, { description = it }, label = { Text("説明") }, enabled = !saving, minLines = 3, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(location, { location = it }, label = { Text("場所") }, enabled = !saving && !readOnly, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(description, { description = it }, label = { Text("説明") }, enabled = !saving && !readOnly, minLines = 3, modifier = Modifier.fillMaxWidth())
         }
     }
     }

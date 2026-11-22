@@ -123,6 +123,38 @@ class ScreenshotTest {
         composeRule.onRoot().captureRoboImage(File("src/test/screenshots/event_editor_create.png"))
     }
 
+    @Test fun eventEditor_readOnlyCannotSave() {
+        composeRule.setContent {
+            MaterialTheme(colorScheme = lightColorScheme()) {
+                EventEditor(
+                    EventDraft(title = "祝日", start = fixedToday.atStartOfDay(),
+                        end = fixedToday.atStartOfDay(), allDay = true, calendarId = "test"),
+                    listOf(CalendarTab("test", "祝日", androidx.compose.ui.graphics.Color.Gray)),
+                    editing = true, readOnly = true, onCancel = {}, onSave = { error("must not save") },
+                )
+            }
+        }
+        composeRule.onNodeWithText("予定の詳細").assertIsDisplayed()
+        composeRule.onNodeWithText("保存").assertIsNotEnabled()
+        composeRule.onNodeWithText("祝日", substring = false).assertIsNotEnabled()
+    }
+
+    @Test fun eventEditor_edit() {
+        composeRule.setContent {
+            MaterialTheme(colorScheme = lightColorScheme()) {
+                EventEditor(
+                    EventDraft(title = "打ち合わせ", start = fixedToday.atTime(9, 0),
+                        end = fixedToday.atTime(10, 0), calendarId = "test",
+                        location = "会議室", description = "議題を確認する"),
+                    listOf(CalendarTab("test", "メイン", androidx.compose.ui.graphics.Color.Gray)),
+                    editing = true, onCancel = {}, onSave = {},
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onRoot().captureRoboImage(File("src/test/screenshots/event_editor_edit.png"))
+    }
+
     @Test
     fun initialMonth_usesInjectedToday_andDoesNotResetOnTodayChange() {
         val today = mutableStateOf(LocalDate.of(2026, 11, 22))

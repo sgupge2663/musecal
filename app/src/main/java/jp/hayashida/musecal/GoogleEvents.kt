@@ -106,6 +106,8 @@ fun googleEventToCalEvent(
             eventId = o.optString("id", "").ifEmpty { null },
             matchStart = ms,
             matchEnd = me,
+            description = o.optString("description", ""),
+            recurringEventId = o.optString("recurringEventId", "").ifEmpty { null },
         )
     }
     val startDate = start.optString("date", "")
@@ -171,7 +173,7 @@ fun parseEventsPage(json: String, calendar: CalendarTab, zone: ZoneId): Pair<Lis
 object EventsApi {
     private const val BASE = "https://www.googleapis.com/calendar/v3/calendars/"
     private const val FIELDS =
-        "timeZone,items(id,status,summary,start,end,colorId,location,recurringEventId),nextPageToken"
+        "timeZone,items(id,status,summary,start,end,colorId,location,description,recurringEventId),nextPageToken"
     private val RFC3339: DateTimeFormatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
 
     class HttpError(val code: Int, message: String) : IOException(message)
@@ -213,6 +215,49 @@ object EventsApi {
             conn.inputStream.use { it.readBytes() }
             Unit
         } finally { conn.disconnect() }
+    }
+
+    suspend fun move(accessToken: String, original: CalEvent, destination: String): CalEvent = withContext(Dispatchers.IO) {
+        require(original.recurringEventId == null)
+        val url = BASE + pathSegment(original.calendarId) + "/events/" + pathSegment(requireNotNull(original.eventId)) +
+            "/move?destination=" + enc(destination)
+        val conn = URL(url).openConnection() as HttpURLConnection
+        try {
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 15_000
+            conn.setRequestProperty("Authorization", "Bearer $accessToken")
+            if (conn.responseCode !in 200..299) throw HttpError(conn.responseCode, "予定の移動に失敗しました")
+            val response = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+            original.copy(calendarId = destination, eventId = response.getString("id"))
+        } finally { conn.disconnect() }
+    }
+
+    /** GET + PUT: 未編集の参加者・通知・繰り返し規則を維持し、日時の型は丸ごと置換する。 */
+    suspend fun update(accessToken: String, original: CalEvent, draft: EventDraft, zone: ZoneId) = withContext(Dispatchers.IO) {
+        require(draft.calendarId == original.calendarId)
+        val id = requireNotNull(original.eventId)
+        val url = BASE + pathSegment(original.calendarId) + "/events/" + pathSegment(id)
+        val body = updateEventBody(JSONObject(get(url, accessToken)), draft, zone)
+        fun send(target: String, method: String, json: JSONObject?) {
+            val conn = URL(target).openConnection() as HttpURLConnection
+            try {
+                conn.requestMethod = method
+                if (method == "PUT") body.optString("etag").takeIf { it.isNotEmpty() }?.let { conn.setRequestProperty("If-Match", it) }
+                conn.connectTimeout = 15_000
+                conn.readTimeout = 15_000
+                conn.setRequestProperty("Authorization", "Bearer $accessToken")
+                if (json != null) {
+                    conn.doOutput = true
+                    conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                    conn.outputStream.use { it.write(json.toString().toByteArray(Charsets.UTF_8)) }
+                }
+                if (conn.responseCode !in 200..299) throw HttpError(conn.responseCode, "予定の保存に失敗しました")
+                conn.inputStream.use { it.readBytes() }
+            } finally { conn.disconnect() }
+        }
+        send(url, "PUT", body)
+
     }
 
     /** 安全上限。1ページ最大2500件なので、6週分でここに届くのは API の異常（同じトークンの繰り返し等）とみなす。 */

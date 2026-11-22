@@ -213,6 +213,8 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
 
     // V1-2: calendarList から対応づけた下部タブ。取得できるまでは空（サンプルのタブで実データを装わない）。
     var writableTabs by remember { mutableStateOf<List<CalendarTab>>(emptyList()) }
+    var editingEvent by remember { mutableStateOf<CalEvent?>(null) }
+    var recurringChoice by remember { mutableStateOf<CalEvent?>(null) }
     var editor by remember { mutableStateOf<EventDraft?>(null) }
     var saving by remember { mutableStateOf(false) }
     var saveError by remember { mutableStateOf<String?>(null) }
@@ -415,6 +417,8 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     // サインイン済みのアカウントが決まるたびに（サインイン直後・再起動時）カレンダー一覧を取り直す。
     // 認可済みなら同意画面は出ずにトークンが返る。サインアウトしたらタブを消し、進行中の要求の札を無効にする。
     LaunchedEffect(current?.email) {
+        editingEvent = null
+        recurringChoice = null
         editor = null
         saveError = null
         saving = false
@@ -475,7 +479,14 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
             accountEmail = current.email,
             onSignOut = { scope.launch { auth.signOut() } },
             tabs = if (dataEmail == current.email) tabs else emptyList(),
+            onEvent = { event ->
+                saveError = null
+                editingEvent = event
+                if (event.recurringEventId != null && writableTabs.any { it.calendarId == event.calendarId }) recurringChoice = event
+                else editor = event.toDraft()
+            },
             onCreate = {
+                editingEvent = null
                 val start = todayState.value.atTime(9, 0)
                 editor = EventDraft(start = start, end = start.plusHours(1), calendarId = writableTabs.firstOrNull()?.calendarId.orEmpty())
                 saveError = null
@@ -497,8 +508,22 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
                 onSyncNow = { syncNow() },
             ),
         )
+        recurringChoice?.let { event ->
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { recurringChoice = null },
+                title = { Text("繰り返し予定の編集") },
+                text = { Text("すべての予定の編集は未対応です。この予定のみ編集できます。") },
+                confirmButton = { androidx.compose.material3.TextButton(onClick = {
+                    editor = event.toDraft(); recurringChoice = null
+                }) { Text("この予定のみ") } },
+                dismissButton = { androidx.compose.material3.TextButton(onClick = {}, enabled = false) { Text("すべての予定") } },
+            )
+        }
         if (editor != null) {
-        EventEditor(editor!!, writableTabs, saving, saveError,
+        EventEditor(editor!!, (writableTabs + tabs.filter { it.calendarId == editingEvent?.calendarId }).distinctBy { it.calendarId }, saving, saveError,
+            editing = editingEvent != null,
+            readOnly = editingEvent?.let { e -> e.eventId == null || writableTabs.none { it.calendarId == e.calendarId } } ?: false,
+            calendarLocked = editingEvent?.recurringEventId != null,
             onCancel = { editor = null },
             onSave = { draft ->
                 val ticket = activeTicket
@@ -506,19 +531,33 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
                     saving = true
                     saveError = null
                     scope.launch {
+                        var movedCalendar = false
                         try {
                             val token = calendarToken()
                             if (!isCurrent(ticket)) return@launch
                             require(writableTabs.any { it.calendarId == draft.calendarId })
-                            EventsApi.insert(token, draft, ZoneId.systemDefault())
+                            val original = editingEvent
+                            if (original == null) EventsApi.insert(token, draft, ZoneId.systemDefault())
+                            else {
+                                require(writableTabs.any { it.calendarId == original.calendarId })
+                                val target = if (draft.calendarId != original.calendarId) {
+                                    val moved = EventsApi.move(token, original, draft.calendarId)
+                                    if (!isCurrent(ticket)) return@launch
+                                    movedCalendar = true
+                                    editingEvent = moved // 更新失敗時の再試行も移動先を使う
+                                    syncNow(listOf(EventWindow(sundayOf(original.startDate))))
+                                    moved
+                                } else original
+                                EventsApi.update(token, target, draft, ZoneId.systemDefault())
+                            }
                             if (isCurrent(ticket)) {
                                 editor = null
-                                syncNow(listOf(EventWindow(sundayOf(draft.start.toLocalDate()))))
+                                syncNow(listOfNotNull(EventWindow(sundayOf(draft.start.toLocalDate())), original?.let { EventWindow(sundayOf(it.startDate)) }))
                             }
                         } catch (e: kotlinx.coroutines.CancellationException) {
                             throw e
                         } catch (e: Exception) {
-                            if (isCurrent(ticket)) saveError = writeFailureMessage(e)
+                            if (isCurrent(ticket)) saveError = (if (movedCalendar) "カレンダーの移動は完了しました。項目の保存を再試行してください。" else "") + writeFailureMessage(e)
                         } finally {
                             if (isCurrent(ticket)) saving = false
                         }
@@ -624,6 +663,7 @@ fun MuseCalApp(
     sync: SyncUi? = null,
     failure: FetchFailureUi? = null,
     onCreate: (() -> Unit)? = null,
+    onEvent: (CalEvent) -> Unit = {},
 ) {
     val context = LocalContext.current
     // 非表示にしたカレンダーの calendarId
@@ -741,7 +781,7 @@ fun MuseCalApp(
         }
     }
 
-    popupDate?.let { d -> DayPopup(d, index.eventsOn(d)) { popupDate = null } }
+    popupDate?.let { d -> DayPopup(d, index.eventsOn(d), onEvent = { popupDate = null; onEvent(it) }) { popupDate = null } }
 }
 
 /** V1-4a: 今すぐ同期ボタンに渡す状態。最終取得日時は自動・手動共通の成功日時（永続化）。 */
@@ -1040,7 +1080,7 @@ private val DOW_JA = mapOf(
 )
 
 @Composable
-private fun DayPopup(date: LocalDate, events: List<CalEvent>, onDismiss: () -> Unit) {
+private fun DayPopup(date: LocalDate, events: List<CalEvent>, onEvent: (CalEvent) -> Unit = {}, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(14.dp), color = Color.White, shadowElevation = 8.dp) {
             Column(Modifier.padding(vertical = 14.dp)) {
@@ -1067,7 +1107,7 @@ private fun DayPopup(date: LocalDate, events: List<CalEvent>, onDismiss: () -> U
                     LazyColumn(Modifier.heightIn(max = 440.dp)) {
                         items(events) { e ->
                             Row(
-                                Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(horizontal = 16.dp, vertical = 7.dp),
+                                Modifier.fillMaxWidth().height(IntrinsicSize.Min).clickable { onEvent(e) }.padding(horizontal = 16.dp, vertical = 7.dp),
                                 horizontalArrangement = Arrangement.Start,
                             ) {
                                 Box(Modifier.width(5.dp).fillMaxHeight().background(e.baseColor, RoundedCornerShape(2.dp)))

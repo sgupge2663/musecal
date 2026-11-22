@@ -48,6 +48,8 @@ data class CalEvent(
      */
     val matchStart: Instant? = null,
     val matchEnd: Instant? = null,
+    val description: String = "",
+    val recurringEventId: String? = null,
 ) {
     /** 終日、または日をまたぐ時間指定 → 色帯で描く。 */
     val isBar: Boolean get() = allDay || endDateInclusive > startDate

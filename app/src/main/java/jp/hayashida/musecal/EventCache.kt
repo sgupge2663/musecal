@@ -21,7 +21,7 @@ class EventCache(private val directory: File) {
 
     fun read(email: String): Entry? = runCatching {
         val root = JSONObject(fileFor(email).readText())
-        require(root.getInt("version") == 1 && root.getString("account") == email)
+        require(root.getInt("version") == 2 && root.getString("account") == email)
         val tabs = root.getJSONArray("tabs").objects().map {
             CalendarTab(it.getString("id"), it.getString("label"), Color(it.getString("color").toULong()))
         }
@@ -35,6 +35,7 @@ class EventCache(private val directory: File) {
                     e.nullable("colorId"), e.getString("calendarId"), e.getString("calendarName"),
                     Color(e.getString("calendarColor").toULong()), e.getString("location"), e.nullable("eventId"),
                     e.nullable("matchStart")?.let(Instant::parse), e.nullable("matchEnd")?.let(Instant::parse),
+                    e.optString("description", ""), e.nullable("recurringEventId"),
                 )
             }
         }
@@ -42,7 +43,7 @@ class EventCache(private val directory: File) {
     }.getOrNull()
 
     fun write(email: String, entry: Entry) {
-        val root = JSONObject().put("version", 1).put("account", email)
+        val root = JSONObject().put("version", 2).put("account", email)
             .put("fetchedAt", entry.snapshot.fetchedAt.toString())
             .put("tabs", JSONArray(entry.tabs.map {
                 JSONObject().put("id", it.calendarId).put("label", it.label).put("color", it.color.value.toString())
@@ -54,7 +55,7 @@ class EventCache(private val directory: File) {
                         .put("start", e.start?.toString()).put("end", e.end?.toString())
                         .put("colorId", e.colorId).put("calendarId", e.calendarId).put("calendarName", e.calendarName)
                         .put("calendarColor", e.calendarColor.value.toString()).put("location", e.location)
-                        .put("eventId", e.eventId).put("matchStart", e.matchStart?.toString()).put("matchEnd", e.matchEnd?.toString())
+                        .put("description", e.description).put("recurringEventId", e.recurringEventId).put("eventId", e.eventId).put("matchStart", e.matchStart?.toString()).put("matchEnd", e.matchEnd?.toString())
                 }))
             }))
         directory.mkdirs()

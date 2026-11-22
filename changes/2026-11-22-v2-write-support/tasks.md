@@ -2,10 +2,11 @@
 
 正本は proposal.md。完了条件と検証方法は各タスクに付ける。検証は EM-3 のフロー（エージェント一次判定→ユーザーは最終判定のみ）。
 
-- [ ] V2-1 認可の拡張（calendar.events ＋ calendar.calendarlist.readonly）
+- [x] V2-1 認可の拡張（calendar.events ＋ calendar.calendarlist.readonly）
   - 内容: アプリの要求スコープを `calendar.readonly` から `calendar.events` ＋ `calendar.calendarlist.readonly` に変更する。同意画面へのスコープ追加は Muse がブラウザで別途実施する（このタスクはアプリ側）。再同意が必要な状態では、V1-5 の許可系エラー＋再試行（サインアウト→ログインし直し）で詰まらないこと
   - 完了条件: 再同意後に読み取りが v1 と同等に動き、書き込み可能なトークンが取得できる。スコープ文字列と同意状態をテストで固定する
   - 検証方法: テスト＋check.sh。実機の再同意フローは配布時にユーザー確認
+  - 統合: 2026-11-22、Muse がレビュー（work/v21/muse-review-63fbbb2.md、受理可）のうえ main へ統合。Google Cloud 同意画面側の2スコープ化も同日完了
 
 
   - 実装記録（2026-11-22 / Codex、レビュー・実機確認前）:

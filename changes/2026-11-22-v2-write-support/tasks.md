@@ -63,6 +63,13 @@
   - 完了条件: 正本・STATUS・QC が実装の実態と一致している
   - 検証方法: レビューで記録の整合を確認。実機照合はユーザーの v2 初回配布時に実施
 
+  - 実施記録（2026-11-23 / Codex）:
+    - REQUIREMENTS.md §8・§8.1 を統合済み v2 に収束。v1 の有効仕様は保持し、認可・書き込み・読取専用・繰り返し制約・タブ固定・cache version 2 を反映。
+    - docs/qc.md に QC-12 を追加。既存エージェント証拠と未確認の実機照合を分離し、全体判定は保留。proposal.md 末尾に反映先を記録。
+    - 検証: 本体 scripts/env.sh を source して ./scripts/check.sh 成功（assembleDebug / testDebugUnitTest / lintDebug OK、ログ /tmp/v25-check.log）。初回の共有 Gradle キャッシュ書込制限は権限拡張で解消。既存プロキシ稼働を確認、再起動不要。
+    - 独立レビュー（別 Codex エージェント）: REQUIREMENTS §8 を EventEditor.kt / GoogleEvents.kt / MainActivity.kt / EventCache.kt と照合し、修正必須の指摘なし。QC-12 の証拠と実機未確認の分離も確認。git diff --check 成功。
+    - コード・STATUS.md は変更なし。チェック欄は [ ] を維持。次は Muse が配布・実機照合とユーザー受理を確認し、統合時に STATUS を更新する。
+
 - [x] V2-6 カレンダー表示選択の固定（2026-11-22 ユーザー追加指示）
   - 内容: 下部タブのカレンダー表示 ON/OFF の選択をアカウントごとに端末へ保存し、起動時に復元する。次回開いても前回選択したカレンダーの予定だけが表示される状態にする。キャッシュ（V1-4）の保存形式と衝突しない形で持つ
   - 完了条件: タブを OFF にして再起動しても OFF のままであることがテストで固定され、新規カレンダーが現れた場合の初期値（表示 ON）も定義されている

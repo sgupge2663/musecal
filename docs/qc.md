@@ -17,6 +17,8 @@
 
 - QC-11 データ連携： 実データの変更反映、同期ラグ、オフラインのキャッシュ・鮮度表示、取得失敗時のエラー帯と再試行を照合する（仕様は REQUIREMENTS.md §8）。
 
+- QC-12 v2 書き込み対応： 再同意後の読み取り、作成・編集・削除と Web の一致、表示タブ選択の再起動後の保持を確認する（REQUIREMENTS.md §8）。
+
 ## 実施記録の様式
 
 新しい記録はこの型で書く：
@@ -219,3 +221,27 @@ QC-03（終日・時間指定のレイアウト）、QC-04/05/07/08、および 
 - 固定ケース: EventEditTest の削除ID（単体／インスタンス／シリーズ）・権限／未確認禁止。ScreenshotTest の確認前0回、キャンセル0回、範囲選択して確認後1回、読取専用で削除ボタンなし。
 - 証拠: `app/src/test/screenshots/event_editor_edit.png`、`event_delete_confirmation.png`。一次目視で削除ボタン・予定タイトル・不可逆の警告・範囲選択・確認／キャンセルの表示を確認。
 - 実サーバー／Web照合・端末の操作感は QC-12 / V2-5 へ。ユーザーの見た目判定は受理待ち。
+
+### QC-12 v2 書き込み対応（2026-11-23）
+- 対象: V2-1〜V2-4・V2-6 統合済み main からの `codex/v25-converge`。文書収束のみ。仕様は [REQUIREMENTS.md §8](../REQUIREMENTS.md#8-データ連携v2読み書き対応)。
+
+#### エージェント側の証拠（実機とは別）
+- 各タスクの実施・統合記録の正本は [v2 tasks.md](../changes/2026-11-22-v2-write-support/tasks.md)。以下はその検証範囲と参照先であり、本タスクで実 API を操作した記録ではない。
+- V2-1: CalendarAuthTest 4件（要求2スコープ・同意状態）、FetchFailureTest（401/403 等）。check.sh 成功記録。Muse レビュー `work/v21/muse-review-63fbbb2.md`（受理可）。
+- V2-2: EventDraftTest（終日排他終了日・複数日・端末TZ/DST・色・権限・エラー）、ScreenshotTest.eventEditor_create / eventEditor_failureKeepsInputAndRetries。基準 `app/src/test/screenshots/event_editor_create.png`、全項目表示の一次目視・入力保持確認は本書 V2-2 節。Muse レビュー `work/v22/muse-review-14c1cce.md`（受理可）。
+- V2-3: EventEditTest 3件（日時・色・場所説明・繰り返しID・未編集項目保持）、ScreenshotTest 12件の成功記録。編集基準 `app/src/test/screenshots/event_editor_edit.png` と eventEditor_readOnlyCannotSave。一次目視は本書 V2-3 節。Muse レビュー `work/v23/muse-review-89b8bf1.md`（シリーズ編集と move 応答喪失の2制約を切り分け、条件つき受理可）。
+- V2-4: EventEditTest（削除ID、権限・未確認・ID不明の禁止）、ScreenshotTest（確認前0回・キャンセル0回・確認後1回、読取専用ボタンなし）。基準 `app/src/test/screenshots/event_delete_confirmation.png` と編集基準、一次目視は本書 V2-4 節。画面外キャッシュ残存の修正・独立再確認は tasks の記録を参照。Muse レビュー `work/v24/muse-review-a251f1c.md`（受理可）。
+- V2-6: CalendarVisibilityPreferencesTest 3件（保存→再生成→復元、ONへの復帰、新規・消滅ID、アカウント分離・認証消去からの独立）、check.sh 成功記録。Muse レビュー `work/v26/muse-review-d1d2467.md`（受理可）。
+- `work/` のレビューは Git 管理外。上記パスは tasks の統合記録からの参照であり、本 worktree で本文を再検査した証拠ではない。エージェントの受理とユーザーの UI 最終受理を区別する。
+
+- V2-5 今回の検証: 本体 scripts/env.sh を source して ./scripts/check.sh 成功（assembleDebug / testDebugUnitTest / lintDebug OK、ログ `/tmp/v25-check.log`）。共有 Gradle キャッシュ書込は権限拡張で実行。別 Codex エージェントが仕様・実装・文書差分を照合し修正必須の指摘なし。git diff --check 成功。
+
+#### 実機照合（すべて未確認）
+- 前提を記録する: 配布版・commit、端末・文字倍率、対象期間・タイムゾーン、照合時点。公開記録には新たな個人情報を転記しない。
+- 再同意後の読み取り継続: 両スコープへ再同意し、一覧・既存予定の取得、再試行・再ログイン経路が機能すること。未確認。
+- 作成: 時間指定・終日（単日／複数日）の登録後、Web とタイトル・開始終了・所属カレンダー・色・場所・説明、アプリ再取得とキャッシュが一致すること。未確認。
+- 編集: 同項目、色なし、未編集項目の保持、カレンダー移動、繰り返しのこの回のみを Web と照合する。競合時のエラーと入力保持、読取専用の詳細のみ・保存不可、シリーズ編集の無効表示も確認する。未確認。
+- 削除: 確認前・キャンセルでは消えず、確認後の単体／この回／シリーズの対象範囲が Web・再取得・キャッシュで一致すること（画面外の予定も含む）。読取専用で削除不可、失敗後の再試行にも確認があること。未確認。
+- タブ固定: OFF にして再起動し、同一アカウントの選択と表示内容が維持され、ONに戻す操作も保存されること。未確認。
+- UI 最終判定・タップ応答・遷移・スクロールの体感: ユーザー判定未受領、受理待ち。
+- AI判定: 既存の自動検証・一次目視の記録あり。実 API／Web 一致を示す証拠は未取得。人判定: 未確認・受理待ち。**QC-12 全体の判定は実機照合が済むまで保留**。

@@ -232,7 +232,7 @@ QC-03（終日・時間指定のレイアウト）、QC-04/05/07/08、および 
 - V2-3: EventEditTest 3件（日時・色・場所説明・繰り返しID・未編集項目保持）、ScreenshotTest 12件の成功記録。編集基準 `app/src/test/screenshots/event_editor_edit.png` と eventEditor_readOnlyCannotSave。一次目視は本書 V2-3 節。Muse レビュー `work/v23/muse-review-89b8bf1.md`（シリーズ編集と move 応答喪失の2制約を切り分け、条件つき受理可）。
 - V2-4: EventEditTest（削除ID、権限・未確認・ID不明の禁止）、ScreenshotTest（確認前0回・キャンセル0回・確認後1回、読取専用ボタンなし）。基準 `app/src/test/screenshots/event_delete_confirmation.png` と編集基準、一次目視は本書 V2-4 節。画面外キャッシュ残存の修正・独立再確認は tasks の記録を参照。Muse レビュー `work/v24/muse-review-a251f1c.md`（受理可）。
 - V2-6: CalendarVisibilityPreferencesTest 3件（保存→再生成→復元、ONへの復帰、新規・消滅ID、アカウント分離・認証消去からの独立）、check.sh 成功記録。Muse レビュー `work/v26/muse-review-d1d2467.md`（受理可）。
-- `work/` のレビューは Git 管理外。上記パスは tasks の統合記録からの参照であり、本 worktree で本文を再検査した証拠ではない。エージェントの受理とユーザーの UI 最終受理を区別する。
+- `work/` のレビュー記録は `git add -f` で Git 管理下に置かれている（git ls-files work/ で確認できる）。
 
 - V2-5 今回の検証: 本体 scripts/env.sh を source して ./scripts/check.sh 成功（assembleDebug / testDebugUnitTest / lintDebug OK、ログ `/tmp/v25-check.log`）。共有 Gradle キャッシュ書込は権限拡張で実行。別 Codex エージェントが仕様・実装・文書差分を照合し修正必須の指摘なし。git diff --check 成功。
 

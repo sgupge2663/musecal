@@ -49,16 +49,25 @@ fun windowToFetch(visibleWeekStarts: List<LocalDate>, covered: Set<LocalDate>): 
 /**
  * V1-4a 今すぐ同期: 取得済みかどうかに関係なく、表示中の週をすべて覆う窓。表示中の最初の週から6週、
  * 覆いきれない週（行の途中で止まって7週目が見えている等）があれば、その週から6週を続ける。
+ * 表示外も含め、失敗した窓を重複なく加える（重なる別開始日の窓も、それぞれ再取得する）。
  */
-fun windowsToRefresh(visibleWeekStarts: List<LocalDate>): List<EventWindow> {
+fun windowsToRefresh(
+    visibleWeekStarts: List<LocalDate>,
+    failedWindows: Collection<EventWindow> = emptyList(),
+): List<EventWindow> {
     val out = mutableListOf<EventWindow>()
     val covered = HashSet<LocalDate>()
     while (true) {
-        val w = windowToFetch(visibleWeekStarts, covered) ?: return out
+        val w = windowToFetch(visibleWeekStarts, covered) ?: return (out + failedWindows).distinct()
         out += w
         covered += w.weekStarts
     }
 }
+
+// null はアクセス許可のエラー。予定の取得成功では消さず、成功した窓のエラーだけを消す。
+internal fun Map<EventWindow?, String>.withoutSuccessfulWindows(
+    windows: List<EventWindow>,
+): Map<EventWindow?, String> = this - windows.toSet()
 
 /**
  * events.list の予定1件を [CalEvent] へ変換する。変換しない（null を返す）のは status=cancelled と、

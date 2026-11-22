@@ -228,7 +228,7 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     val cacheIo = remember { kotlinx.coroutines.sync.Mutex() }
     var dataEmail by remember { mutableStateOf<String?>(null) }
     var fetchedAt by remember { mutableStateOf<java.time.Instant?>(null) }
-    var fetchErrors by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var fetchErrors by remember { mutableStateOf<Map<EventWindow?, String>>(emptyMap()) }
     val fetchError = fetchErrors.values.firstOrNull()
     var accessing by remember { mutableStateOf(false) }
     var startupRefresh by remember { mutableStateOf(false) }
@@ -265,13 +265,13 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
         if (!isCurrent(ticket) || store.generation != p.generation) throw kotlinx.coroutines.CancellationException("stale")
     }
 
-    fun showFetchFailure(e: Throwable, key: String = "access") {
+    fun showFetchFailure(e: Throwable, key: EventWindow? = null) {
         fetchErrors = fetchErrors + (key to fetchFailureMessage(e))
     }
 
     fun persistSuccess(ticket: AccountRequestGate.Ticket, windows: List<EventWindow>) {
         events = store.merged()
-        fetchErrors = fetchErrors - windows.map { it.toString() }
+        fetchErrors = fetchErrors.withoutSuccessfulWindows(windows)
         fetchedAt = store.lastFetchedAt
         val entry = EventCache.Entry(tabs, store.snapshot())
         scope.launch {
@@ -299,18 +299,18 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
             // アカウント切替・サインアウト・タブの取り直し・同じ窓への新しい要求の後に返った結果は捨てる（成功・失敗とも）
             when (val o = store.finish(pending, result, zone, isCurrent(ticket))) {
                 EventWindowStore.Outcome.Applied -> persistSuccess(ticket, listOf(window))
-                is EventWindowStore.Outcome.Failed -> showFetchFailure(o.error, window.toString())
+                is EventWindowStore.Outcome.Failed -> showFetchFailure(o.error, window)
                 EventWindowStore.Outcome.Discarded -> if (isCurrent(ticket) && pending.generation == store.generation) retrySeq++
             }
         }
     }
 
-    // V1-4a 今すぐ同期: 表示中の週を、取得済みでも取り直す（スクロール停止時の「取得済みなら取らない」を通らない）。
+    // V1-5c 再試行・今すぐ同期: 表示中の週と失敗した窓を、取得済みでも取り直す（スクロール停止時の「取得済みなら取らない」を通らない）。
     // 取得・反映はスクロール由来と同じ経路（札・世代・窓ごとの要求番号）。失敗しても表示中の予定は消さない。
     fun syncNow() {
         val ticket = activeTicket ?: return
         if (syncing || accessing || tabs.isEmpty() || !isCurrent(ticket)) return
-        val windows = windowsToRefresh(visibleWeeks)
+        val windows = windowsToRefresh(visibleWeeks, fetchErrors.keys.filterNotNull())
         if (windows.isEmpty()) return
         val tabsSnapshot = tabs
         val zone = ZoneId.systemDefault()
@@ -336,7 +336,7 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
                 if (outcomes.any { it == EventWindowStore.Outcome.Discarded } && isCurrent(ticket)) retrySeq++
                 if (seq != syncSeq) return@launch
                 pendings.zip(outcomes).forEach { (p, outcome) ->
-                    if (outcome is EventWindowStore.Outcome.Failed) showFetchFailure(outcome.error, p.window.toString())
+                    if (outcome is EventWindowStore.Outcome.Failed) showFetchFailure(outcome.error, p.window)
                 }
             } finally {
                 if (seq == syncSeq) syncing = false
@@ -351,7 +351,7 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
             accessing = false
             result
                 .onSuccess {
-                    fetchErrors = fetchErrors - "access"
+                    fetchErrors = fetchErrors - null
                     val updated = mapCalendarTabs(it)
                     if (tabs != updated) {
                         store.reset()
@@ -382,7 +382,7 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
             loadCalendarList(ticket, token)
         } else {
             accessing = false
-            fetchErrors = fetchErrors + ("access" to "カレンダーへのアクセスが必要です。再試行を押して、読み取りを許可してください。")
+            fetchErrors = fetchErrors + (null to "カレンダーへのアクセスが必要です。再試行を押して、読み取りを許可してください。")
         }
     }
 
@@ -470,7 +470,7 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
                 FetchFailureUi(it, fetchedAt, syncing || accessing) {
                     if (!syncing && !accessing) {
                         val ticket = activeTicket
-                        if ((tabs.isEmpty() || "access" in fetchErrors) && ticket != null) requestCalendarAccess(ticket) else syncNow()
+                        if ((tabs.isEmpty() || null in fetchErrors) && ticket != null) requestCalendarAccess(ticket) else syncNow()
                     }
                 }
             } else null,

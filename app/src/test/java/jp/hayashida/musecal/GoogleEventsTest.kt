@@ -3,6 +3,7 @@ package jp.hayashida.musecal
 import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -425,6 +426,42 @@ class GoogleEventsTest {
         // 行の途中で止まって7週見えているときは、7週目から始まる窓も取り直す
         assertEquals(listOf(EventWindow(nov29), EventWindow(nov29.plusWeeks(6))), windowsToRefresh(weeks(nov29, 7)))
         assertTrue(windowsToRefresh(emptyList()).isEmpty())
+    }
+
+    @Test
+    fun retryClearsOffscreenFailureOnlyWhenThatWindowSucceeds() {
+        val store = EventWindowStore()
+        val offscreen = EventWindow(nov29.minusWeeks(6))
+        val failure = java.io.IOException("offline")
+        assertTrue(store.finish(store.markInFlight(offscreen), Result.failure(failure), tokyo, true)
+            is EventWindowStore.Outcome.Failed)
+        var errors: Map<EventWindow?, String> = mapOf(offscreen to fetchFailureMessage(failure))
+        assertNotNull(errors.values.firstOrNull()) // 表示外の失敗がエラー帯に出ている
+        val targets = windowsToRefresh(weeks(nov29, 6), errors.keys.filterNotNull())
+        assertEquals(listOf(EventWindow(nov29), offscreen), targets)
+        // 表示窓だけ成功しても帯は消えない
+        assertEquals(applied, store.finish(store.markInFlight(targets.first()), ok(emptyList()), tokyo, true))
+        errors = errors.withoutSuccessfulWindows(listOf(targets.first()))
+        assertNotNull(errors.values.firstOrNull())
+        // 表示外の窓が再び失敗したら帯を残す
+        assertTrue(store.finish(store.markInFlight(offscreen), Result.failure(failure), tokyo, true)
+            is EventWindowStore.Outcome.Failed)
+        assertNotNull(errors.values.firstOrNull())
+        // 次の再試行でその窓も成功すると帯が消える
+        assertTrue(offscreen in windowsToRefresh(weeks(nov29, 6), errors.keys.filterNotNull()))
+        assertEquals(applied, store.finish(store.markInFlight(offscreen), ok(emptyList()), tokyo, true))
+        errors = errors.withoutSuccessfulWindows(listOf(offscreen))
+        assertNull(errors.values.firstOrNull())
+    }
+
+    @Test
+    fun retryDeduplicatesWindowsAndPreservesAccessAndOtherWindowFailures() {
+        val visible = EventWindow(nov29)
+        val overlapping = EventWindow(nov29.plusWeeks(1))
+        assertEquals(listOf(visible, overlapping), windowsToRefresh(weeks(nov29, 6), listOf(visible, overlapping)))
+        assertEquals(listOf(overlapping), windowsToRefresh(emptyList(), listOf(overlapping)))
+        val errors: Map<EventWindow?, String> = mapOf(null to "access", visible to "visible", overlapping to "overlap")
+        assertEquals(mapOf(null to "access", overlapping to "overlap"), errors.withoutSuccessfulWindows(listOf(visible)))
     }
 
     @Test

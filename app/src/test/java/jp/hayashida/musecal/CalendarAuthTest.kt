@@ -1,30 +1,48 @@
 package jp.hayashida.musecal
 
-import org.junit.Assert.assertEquals
+import android.app.PendingIntent
+import android.content.Intent
+import androidx.test.core.app.ApplicationProvider
+import org.junit.Assert.*
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
-/**
- * V1-1: Calendar 認可で実際に要求する scope が読み取り専用のみであることを固定する。
- * 定数の文字列だけでなく、認可要求の組み立て元である要求 scope の集合
- * （[CalendarAuth.REQUESTED_SCOPE_URIS]）そのものが calendar.readonly 1 件のみであることを検証する。
- * AuthorizationClient へはこの一覧を Scope オブジェクトへ 1 対 1 にラップして渡す。
- * 書き込み scope を足す場合は v2 の仕様変更として扱う（proposal の範囲外）。
- */
+/** V2-1: 実際の要求スコープと SDK 応答の状態判定を固定する。 */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
 class CalendarAuthTest {
-
-    @Test
-    fun calendarScopeIsReadOnly() {
-        assertEquals(
-            "https://www.googleapis.com/auth/calendar.readonly",
-            CalendarAuth.CALENDAR_READONLY_SCOPE,
+    @Test fun requestedScopesAreExactlyCalendarEventsAndCalendarListReadonly() {
+        val expected = listOf(
+            "https://www.googleapis.com/auth/calendar.events",
+            "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
         )
+        assertEquals(expected, CalendarAuth.REQUESTED_SCOPE_URIS)
+        assertEquals(expected, CalendarAuth.requestedScopes().map { it.scopeUri })
     }
 
-    @Test
-    fun requestedScopesAreExactlyCalendarReadOnly() {
-        assertEquals(
-            listOf("https://www.googleapis.com/auth/calendar.readonly"),
-            CalendarAuth.REQUESTED_SCOPE_URIS,
-        )
+    private fun consentSender() = PendingIntent.getActivity(
+        ApplicationProvider.getApplicationContext(), 0, Intent("consent"),
+        PendingIntent.FLAG_IMMUTABLE,
+    ).intentSender
+
+    @Test fun tokenIsGrantedEvenWhenResolutionIsPresent() {
+        assertEquals(CalendarAuth.CalendarAccess.Granted("ephemeral"),
+            CalendarAuth.calendarAccessFromResult("ephemeral", consentSender()))
+        assertEquals(CalendarAuth.CalendarAccess.Granted("ephemeral"),
+            CalendarAuth.calendarAccessFromResult("ephemeral", null))
+    }
+
+    @Test fun missingTokenWithResolutionRequiresConsent() {
+        val sender = consentSender()
+        assertEquals(CalendarAuth.CalendarAccess.ConsentRequired(sender),
+            CalendarAuth.calendarAccessFromResult(null, sender))
+    }
+
+    @Test fun missingTokenAndResolutionFails() {
+        val result = CalendarAuth.calendarAccessFromResult(null, null)
+        assertTrue(result is CalendarAuth.CalendarAccess.Failed)
+        assertTrue((result as CalendarAuth.CalendarAccess.Failed).error is IllegalStateException)
     }
 }

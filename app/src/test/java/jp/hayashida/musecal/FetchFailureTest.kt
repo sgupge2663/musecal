@@ -14,7 +14,7 @@ class FetchFailureTest {
     }
 
     @Test fun permissionFailure_suggestsSigningInAgain() {
-        for (error in listOf(EventsApi.HttpError(403, "detail"), CalendarListApi.HttpError(401, "detail"))) {
+        for (error in listOf(SecurityException("consent required"), EventsApi.HttpError(401, "detail"), EventsApi.HttpError(403, "detail"), CalendarListApi.HttpError(401, "detail"), CalendarListApi.HttpError(403, "detail"))) {
             assertTrue(fetchFailureMessage(error).contains("ログインし直してください"))
         }
     }

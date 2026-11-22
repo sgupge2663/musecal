@@ -149,3 +149,4 @@
     - 要判断: 本作業で新たな仕様判断は行っていない。STATUS には V1-5c を残タスクとする記述があるが、現行コードには修正があり、実機最終確認は未確認。STATUS の更新・最終受理は担当者の判断に残す。
     - 次のアクション: 別担当が仕様・実装・QC の整合をレビューし、ユーザーが残る実機項目を確認する。レビュー前のため V1-6 は [ ] を維持し、archive へは移さない。
     - 検証: 主作業ツリーの scripts/env.sh を source 後、./scripts/check.sh 成功（assembleDebug / testDebugUnitTest / lintDebug OK、79件・失敗0・エラー0・省略1）。初回は共有 Gradle キャッシュのロックが書き込み制限で停止し、権限付き再実行で成功。既存中継プロキシは稼働済み、追加起動なし、PKIX 失敗なし。git diff --check 成功。SKIP_CHECK 不使用。ログ: /tmp/v16-check.log（Git 管理外）。
+  - レビュー（2026-11-22、Muse）: **受理可、指摘なし**。記録は work/v16/muse-review-5e2f9db.md。REQUIREMENTS §8 と QC-11 を実装記録・実機記録と全項目照合した

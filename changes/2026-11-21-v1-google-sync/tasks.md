@@ -97,6 +97,7 @@
     - 追加テスト: EventCacheTest 5件（時間指定・終日・空窓・タブ・成功日時の保存復元、別アカウントと誤配置ファイルの拒否、破損ファイル、取得失敗時の日時維持と reset、重なり破棄直後の未取得週の再取得判定）。全体69件、うち通常省略1件＝RealEventsDumpTest。
     - Roborazzi: 現ソースでの比較で month_view.png のアカウント帯のみが変化（差分矩形 (145,207)–(420,239)）。最終取得日時とメール省略の意図した差分として actual 画像を基準へ反映。ほか2画面は不変。scripts/check.sh 成功（assembleDebug / testDebugUnitTest / lintDebug、SKIP_CHECK 不使用）。JUnit XML は総数69件、失敗0・エラー0・省略1。git diff --check 成功。ブランチ CI は push 後に確認し最終報告に run URL を残す。STATUS.md は変更しない。
     - 未確認・受理待ち: 実機の機内モード ON/OFF、再起動での即表示・通常時の最新化、実機アカウント切替・サインアウト、N1 の実操作、見た目のユーザー判定。実機確認はユーザー側。Claude Code の独立レビュー待ち。仕様 converge は既存 V1-6 に残す。
+  - レビュー（2026-11-22、Muse が完遂）: **受理可、指摘なし**。記録は work/v14/muse-review-a5a343c.md。経緯: Claude Code のレビューはクォータフロアの都合で途中停止し、その未コミット変更は negative control の切り戻し忘れと判定して破棄。Muse が check.sh 再実行（69件成功）と NC 2件（inFlight 位置・重なり判定、いずれも対象テストのみ失敗）を実施して完遂した
 
 - [ ] V1-5 未ログイン・エラー時の画面
   - 内容: 未ログイン時はサンプルを出さず、ログイン案内のみ。エラー時は理由の分かる文言＋再試行

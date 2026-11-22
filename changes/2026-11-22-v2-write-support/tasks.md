@@ -7,6 +7,14 @@
   - 完了条件: 再同意後に読み取りが v1 と同等に動き、書き込み可能なトークンが取得できる。スコープ文字列と同意状態をテストで固定する
   - 検証方法: テスト＋check.sh。実機の再同意フローは配布時にユーザー確認
 
+
+  - 実装記録（2026-11-22 / Codex、レビュー・実機確認前）:
+    - CalendarAuth の単一定義を calendar.events へ変更。認可ゲートウェイとトークン非保存を維持。
+    - 再試行を requestCalendarAccess 経由に統一し、取得中の ConsentRequired でも同意画面に戻れるようにした。再認可後は表示窓と失敗窓を再取得する。既存の許可系文言・サインアウト経路は維持。
+    - CalendarAuthTest で実際の Scope 一覧、Granted（トークン優先）、ConsentRequired、応答不足の Failed を検証。FetchFailureTest は SecurityException と両 API の 401/403 を網羅。
+    - 独立レビュー: 再試行時に画面外の失敗窓が漏れる指摘は修正済み・独立再確認済み。未解決: calendarList.list は calendar.events 単独では認可されないため、calendar.calendarlist.readonly 追加の仕様判断をユーザーへ確認中（https://developers.google.com/workspace/calendar/api/v3/reference/calendarList/list#authorization）。現仕様のままでは新規ユーザー等の読み取りを保証できない。
+    - 検証: 本体の scripts/env.sh を source して ./scripts/check.sh 成功（assembleDebug / testDebugUnitTest / lintDebug OK、CalendarAuthTest 4件・失敗0）。共有 Gradle キャッシュの書き込みに実行権限拡張を使用。PKIX 失敗なし。実機での再同意・読み取り確認は未実施。Google Cloud コンソール・STATUS.md は未変更。
+
 - [ ] V2-2 予定の作成
   - 内容: 新規作成の入口（月表示のボタン）と編集画面（タイトル・開始・終了・終日・カレンダー・色）、events.insert、成功後に該当窓を再取得して表示・キャッシュを一致させる。失敗時は日本語エラー＋再試行、入力内容は保持する
   - 完了条件: アプリで作った予定がサーバーに登録され、再取得後の表示とキャッシュが一致する

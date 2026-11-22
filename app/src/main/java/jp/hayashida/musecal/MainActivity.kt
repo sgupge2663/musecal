@@ -450,7 +450,7 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
         if (dataEmail != current?.email || tabs.isEmpty() || !isCurrent(ticket)) return@LaunchedEffect
         if (startupRefresh && visibleWeeks.isNotEmpty()) {
             startupRefresh = false
-            windowsToRefresh(visibleWeeks).forEach { fetchEventWindow(ticket, tabs, it) }
+            windowsToRefresh(visibleWeeks, fetchErrors.keys.filterNotNull()).forEach { fetchEventWindow(ticket, tabs, it) }
         }
         while (true) {
             val w = windowToFetch(visibleWeeks, store.coveredWeeks()) ?: break
@@ -470,7 +470,8 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
                 FetchFailureUi(it, fetchedAt, syncing || accessing) {
                     if (!syncing && !accessing) {
                         val ticket = activeTicket
-                        if ((tabs.isEmpty() || null in fetchErrors) && ticket != null) requestCalendarAccess(ticket) else syncNow()
+                        // 取得中の ConsentRequired / 401 / 403 でも同意フローへ戻れるようにする。
+                        if (ticket != null) requestCalendarAccess(ticket)
                     }
                 }
             } else null,

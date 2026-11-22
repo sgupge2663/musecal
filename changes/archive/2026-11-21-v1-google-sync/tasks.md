@@ -138,7 +138,7 @@
   - レビュー（2026-11-22、Muse）: **受理可、指摘なし**。記録は work/v15b/muse-review-29c7c78.md
   - 統合（2026-11-22、Muse）: ブランチ CI 成功（run 45008258576 / 45024604791）→ main へ merge（66cd561）→ prune → audit クリーン。v0.9 に含めて配布予定。仕様確認（2026-11-22、ユーザー）: 「開き直したときだけ当月、他のアプリから戻ったときは見ていた月のまま」で OK
 
-- [ ] V1-6 仕様 converge と QC 記録
+- [x] V1-6 仕様 converge と QC 記録（2026-11-22 main 統合済み）
   - 内容: REQUIREMENTS.md に「データ連携」節を正本化（proposal の追記案を承認どおり反映）。docs/qc.md に実機照合の記録（QC-11 として追加を検討）
   - 完了条件: 正本・STATUS・QC が実装の実態と一致している
   - 検証方法: Codex レビューで記録の整合を確認
@@ -151,3 +151,4 @@
     - 次のアクション: 別担当が仕様・実装・QC の整合をレビューし、ユーザーが残る実機項目を確認する。レビュー前のため V1-6 は [ ] を維持し、archive へは移さない。
     - 検証: 主作業ツリーの scripts/env.sh を source 後、./scripts/check.sh 成功（assembleDebug / testDebugUnitTest / lintDebug OK、79件・失敗0・エラー0・省略1）。初回は共有 Gradle キャッシュのロックが書き込み制限で停止し、権限付き再実行で成功。既存中継プロキシは稼働済み、追加起動なし、PKIX 失敗なし。git diff --check 成功。SKIP_CHECK 不使用。ログ: /tmp/v16-check.log（Git 管理外）。
   - レビュー（2026-11-22、Muse）: **受理可、指摘なし**。記録は work/v16/muse-review-5e2f9db.md。REQUIREMENTS §8 と QC-11 を実装記録・実機記録と全項目照合した
+  - 統合（2026-11-22、Muse）: ブランチ CI 成功（run 45027628065 / 45027734014）→ main へ merge → prune → audit クリーン。これで V1-1〜V1-6 はすべて完了し、本フォルダは archive へ移す。残る実機の最終確認（QC-11 の未確認項目、QC-06）はユーザーの実機判定として継続

@@ -2,8 +2,8 @@
 
 正本は proposal.md。完了条件と検証方法は各タスクに付ける。検証は EM-3 のフロー（エージェント一次判定→ユーザーは最終判定のみ）。
 
-- [ ] V2-1 認可の拡張（calendar.events）
-  - 内容: アプリの要求スコープを `calendar.readonly` から `calendar.events` に変更する。同意画面へのスコープ追加は Muse がブラウザで別途実施する（このタスクはアプリ側）。再同意が必要な状態では、V1-5 の許可系エラー＋再試行（サインアウト→ログインし直し）で詰まらないこと
+- [ ] V2-1 認可の拡張（calendar.events ＋ calendar.calendarlist.readonly）
+  - 内容: アプリの要求スコープを `calendar.readonly` から `calendar.events` ＋ `calendar.calendarlist.readonly` に変更する。同意画面へのスコープ追加は Muse がブラウザで別途実施する（このタスクはアプリ側）。再同意が必要な状態では、V1-5 の許可系エラー＋再試行（サインアウト→ログインし直し）で詰まらないこと
   - 完了条件: 再同意後に読み取りが v1 と同等に動き、書き込み可能なトークンが取得できる。スコープ文字列と同意状態をテストで固定する
   - 検証方法: テスト＋check.sh。実機の再同意フローは配布時にユーザー確認
 
@@ -12,7 +12,8 @@
     - CalendarAuth の単一定義を calendar.events へ変更。認可ゲートウェイとトークン非保存を維持。
     - 再試行を requestCalendarAccess 経由に統一し、取得中の ConsentRequired でも同意画面に戻れるようにした。再認可後は表示窓と失敗窓を再取得する。既存の許可系文言・サインアウト経路は維持。
     - CalendarAuthTest で実際の Scope 一覧、Granted（トークン優先）、ConsentRequired、応答不足の Failed を検証。FetchFailureTest は SecurityException と両 API の 401/403 を網羅。
-    - 独立レビュー: 再試行時に画面外の失敗窓が漏れる指摘は修正済み・独立再確認済み。未解決: calendarList.list は calendar.events 単独では認可されないため、calendar.calendarlist.readonly 追加の仕様判断をユーザーへ確認中（https://developers.google.com/workspace/calendar/api/v3/reference/calendarList/list#authorization）。現仕様のままでは新規ユーザー等の読み取りを保証できない。
+    - 独立レビュー: 再試行時に画面外の失敗窓が漏れる指摘は修正済み・独立再確認済み。calendarList.list は calendar.events 単独では認可されないため、calendar.calendarlist.readonly 追加は提案側で訂正し対処済み（https://developers.google.com/workspace/calendar/api/v3/reference/calendarList/list#authorization）。
+    - 訂正（2026-11-22）: main 最新の proposal.md 決定1を確認し、REQUESTED_SCOPE_URIS を calendar.events ＋ calendar.calendarlist.readonly の2件へ修正。CalendarAuthTest は URI 定義と実際の Scope 一覧がこの2件だけであることを検証する。独立レビューで指摘なし（STATUS.md と制約対象に変更なし）。訂正後も本体の scripts/env.sh を source して ./scripts/check.sh 成功（assembleDebug / testDebugUnitTest / lintDebug OK、CalendarAuthTest 4件・失敗0・エラー0）。共有 Gradle キャッシュへの書き込みに実行権限拡張を使用。
     - 検証: 本体の scripts/env.sh を source して ./scripts/check.sh 成功（assembleDebug / testDebugUnitTest / lintDebug OK、CalendarAuthTest 4件・失敗0）。共有 Gradle キャッシュの書き込みに実行権限拡張を使用。PKIX 失敗なし。実機での再同意・読み取り確認は未実施。Google Cloud コンソール・STATUS.md は未変更。
 
 - [ ] V2-2 予定の作成

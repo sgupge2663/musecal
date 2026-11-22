@@ -32,7 +32,7 @@ import com.google.android.gms.auth.api.identity.AuthorizationRequest as GmsAutho
  *   Google ID トークンを取得する。serverClientId には Google Cloud 側の
  *   「ウェブアプリケーション」タイプの OAuth クライアント ID（R.string.google_web_client_id）が要る。
  * - Calendar API のアクセス権: Play services auth の AuthorizationClient で
- *   scope [CALENDAR_EVENTS_SCOPE] のみを要求する。アクセストークンは永続化せず、
+ *   [REQUESTED_SCOPE_URIS] の予定読み書き・カレンダー一覧読み取りを要求する。アクセストークンは永続化せず、
  *   V1-3 以降が API を呼ぶたびに [authorizeCalendar] で取り直す（認可済みなら無言で返る）。
  *
  * 永続化するのはサインインしたアカウントのメールアドレスと表示名のみ（アプリ内 SharedPreferences）。
@@ -113,7 +113,7 @@ class CalendarAuth(context: Context) {
     }
 
     /**
-     * Calendar 予定の読み書き権限の認可を得る。認可済みなら [CalendarAccess.Granted] が即返る。
+     * Calendar 予定の読み書きとカレンダー一覧の読み取り権限の認可を得る。認可済みなら [CalendarAccess.Granted] が即返る。
      * 同意画面が必要な場合は [CalendarAccess.ConsentRequired] を返すので、呼び出し側が
      * IntentSender を起動し、結果を [authorizationResultFromIntent] で受け取ること。
      */
@@ -137,14 +137,17 @@ class CalendarAuth(context: Context) {
         authorizationClient.getAuthorizationResultFromIntent(data)
 
     companion object {
-        /** 要求する権限は Calendar 予定の読み書きのみ（V2-1）。 */
+        /** 要求する権限は Calendar 予定の読み書きとカレンダー一覧の読み取り（V2-1）。 */
         const val CALENDAR_EVENTS_SCOPE = "https://www.googleapis.com/auth/calendar.events"
 
         /**
          * AuthorizationClient へ実際に要求する scope の集合（URI の一覧）。
          * 認可要求は必ずこの一覧から組み立てる（CalendarAuthTest がこの一覧そのものを検証する）。
          */
-        val REQUESTED_SCOPE_URIS: List<String> = listOf(CALENDAR_EVENTS_SCOPE)
+        val REQUESTED_SCOPE_URIS: List<String> = listOf(
+            CALENDAR_EVENTS_SCOPE,
+            "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+        )
 
         /** [REQUESTED_SCOPE_URIS] を AuthorizationClient 用の [Scope] 一覧に変換する（1対1のラップのみ）。 */
         fun requestedScopes(): List<Scope> = REQUESTED_SCOPE_URIS.map(::Scope)

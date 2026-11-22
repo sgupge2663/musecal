@@ -13,8 +13,11 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class CalendarAuthTest {
-    @Test fun requestedScopesAreExactlyCalendarEvents() {
-        val expected = listOf("https://www.googleapis.com/auth/calendar.events")
+    @Test fun requestedScopesAreExactlyCalendarEventsAndCalendarListReadonly() {
+        val expected = listOf(
+            "https://www.googleapis.com/auth/calendar.events",
+            "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+        )
         assertEquals(expected, CalendarAuth.REQUESTED_SCOPE_URIS)
         assertEquals(expected, CalendarAuth.requestedScopes().map { it.scopeUri })
     }

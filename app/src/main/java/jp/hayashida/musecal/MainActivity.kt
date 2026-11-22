@@ -693,8 +693,11 @@ fun MuseCalApp(
     onEvent: (CalEvent) -> Unit = {},
 ) {
     val context = LocalContext.current
-    // 非表示にしたカレンダーの calendarId
-    var hidden by remember { mutableStateOf(setOf<String>()) }
+    // OFF の ID だけ保存。calendarList 未取得時も復元し、キャッシュ表示にも適用する。
+    val visibility = remember(context) { CalendarVisibilityPreferences(context) }
+    var hidden by remember(accountEmail, visibility) {
+        mutableStateOf(visibility.loadHidden(accountEmail))
+    }
     val index = remember(all, hidden) { EventIndex(all.filter { it.calendarId !in hidden }) }
 
     // 初回だけ today の属する月へ。再コンポーズ・状態復元時は既存のスクロール位置を保つ。
@@ -805,6 +808,7 @@ fun MuseCalApp(
 
         CalendarTabBar(tabs, hidden) { id ->
             hidden = if (id in hidden) hidden - id else hidden + id
+            visibility.saveHidden(accountEmail, hidden)
         }
     }
 

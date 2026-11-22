@@ -35,7 +35,7 @@ import java.time.ZoneId
  *
  * 前提を固定して決定的にする:
  * - 画面サイズ・密度: w360dp-h800dp-xxhdpi（1080x2400px 相当）
- * - 「今日」: 2026-12-16（水）に固定（初期表示月も 2026年12月でコード側固定）
+ * - 「今日」: 2026-12-16（水）に固定（注入した日付から初期表示月も12月になる）
  * - タイムゾーン: Asia/Tokyo（サンプル予定の +09:00 をそのまま解釈する）
  */
 @RunWith(RobolectricTestRunner::class)
@@ -84,6 +84,27 @@ class ScreenshotTest {
             }
         }
         composeRule.waitForIdle()
+    }
+
+    @Test
+    fun initialMonth_usesInjectedToday_andDoesNotResetOnTodayChange() {
+        val today = mutableStateOf(LocalDate.of(2026, 11, 22))
+        composeRule.setContent {
+            MaterialTheme(colorScheme = lightColorScheme()) {
+                MuseCalApp(emptyList(), today, "test@example.jp", {}, emptyList())
+            }
+        }
+        composeRule.onNodeWithText("2026年11月").assertIsDisplayed()
+        composeRule.onNodeWithText("›").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("2026年12月").assertIsDisplayed()
+        composeRule.runOnIdle {
+            today.value = LocalDate.of(2027, 1, 1)
+        }
+        composeRule.onNodeWithText("2026年12月").assertIsDisplayed()
+        composeRule.onNodeWithText("今日").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("2027年1月").assertIsDisplayed()
     }
 
     @Test

@@ -124,6 +124,12 @@
   - 内容: アプリを開いたとき、当月（今日の属する月）を表示する。現状は 12 月が開くことがある（ユーザーの実機報告 2026-11-22 17:45。スクショでも 11/22 時点で 12 月表示）
   - 完了条件: 起動直後の表示月が当月になる。スクショテストの前提日（12/16）とは分離し、本番の初期月だけを対象にする。原因（初期ページの決め方・キャッシュ復元時の表示月・today の扱い）は実装側で特定して記録する
   - 検証方法: 回帰テスト＋check.sh。実機の見た目はユーザーが v0.9 で確認
+  - 原因調査（2026-11-22、Codex）: MuseCalApp の rememberLazyListState の初期週が INITIAL_MONTH（2026-12）固定だった。本番 MainActivity の today は LocalDate.now() で 画面開始・復帰時（STARTED）にも更新されるが、初期位置には使われていなかった。EventCache は予定・取得日時の復元であり表示月は復元しない。スクロール位置は rememberLazyListState の保存状態があればそちらを復元する。
+  - 実装: 初回の todayState から YearMonth を remember し、その月初を含む週を初期位置にする。復帰時や today 更新時の強制移動は追加しない。「今日」ボタンは押下時点の today を使う。スクショの today=2026-12-16 の注入を維持し、基準画像は変更しない。
+  - 回帰テスト: 注入日 2026-11-22 で11月表示 → 月送りで12月 → today を2027-01-01へ更新しても12月維持 →「今日」で1月表示。
+  - 検証: 主作業ツリーの scripts/env.sh を source 後、./scripts/check.sh 成功（assembleDebug / testDebugUnitTest / lintDebug）。77件、失敗0、省略1。既存 Roborazzi 基準画像の比較も成功し、再記録なし。初回は依存取得の Connection refused（既存中継プロキシ未起動）で8件失敗し、既存 auth_relay_proxy.py を一時起動して解消。PKIX なし。git diff --check 成功。
+  - 独立レビュー: 別 Codex エージェントが仕様と照合、実装への指摘なし。today 更新タイミングの記録表現のみ修正済み。実機スクショとユーザー判定は v0.9 で受理待ちのためチェック欄は未完了を維持。STATUS.md は変更しない。
+  - レビュー（2026-11-22、Muse）: **受理可、指摘なし**。記録は work/v15b/muse-review-29c7c78.md
 
 - [ ] V1-6 仕様 converge と QC 記録
   - 内容: REQUIREMENTS.md に「データ連携」節を正本化（proposal の追記案を承認どおり反映）。docs/qc.md に実機照合の記録（QC-11 として追加を検討）

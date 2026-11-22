@@ -118,7 +118,6 @@ import java.time.temporal.IsoFields
 /** スクロール範囲の起点（日曜）。2024-12-29 〜 約6年分。 */
 private val BASE_SUNDAY: LocalDate = LocalDate.of(2024, 12, 29)
 private const val WEEK_COUNT = 52 * 6
-private val INITIAL_MONTH: YearMonth = YearMonth.of(2026, 12)
 private const val VISIBLE_WEEKS = 6
 
 // 行の高さの下限（通常の文字倍率ではこの値。文字倍率を上げると実測した文字の高さに合わせて伸びる）
@@ -584,7 +583,9 @@ fun MuseCalApp(
     var hidden by remember { mutableStateOf(setOf<String>()) }
     val index = remember(all, hidden) { EventIndex(all.filter { it.calendarId !in hidden }) }
 
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = weekIndexOf(INITIAL_MONTH.atDay(1)))
+    // 初回だけ today の属する月へ。再コンポーズ・状態復元時は既存のスクロール位置を保つ。
+    val initialMonth = remember { YearMonth.from(todayState.value) }
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = weekIndexOf(initialMonth.atDay(1)))
     val scope = rememberCoroutineScope()
     var selected by remember { mutableStateOf<LocalDate?>(null) }
     var popupDate by remember { mutableStateOf<LocalDate?>(null) }

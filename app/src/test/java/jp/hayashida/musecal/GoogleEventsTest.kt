@@ -462,6 +462,33 @@ class GoogleEventsTest {
     }
 
     @Test
+    fun olderNov22FetchCannotUndoNov29SyncDeletionOnDec10() {
+        val store = EventWindowStore()
+        val nov22 = nov29.minusWeeks(1)
+        val old = listOf(allDay("dec10", "2026-12-10", "2026-12-11", "Asia/Tokyo", mainTab))
+        store.put(EventWindow(nov29), old, tokyo)
+        val a = store.markInFlight(EventWindow(nov22)) // 自動取得が先に開始
+        val b = store.markInFlight(EventWindow(nov29)) // 別開始日の今すぐ同期
+        assertEquals(applied, store.finish(b, ok(emptyList()), tokyo, true))
+        assertTrue(store.merged().isEmpty()) // 12/10 の削除
+        assertEquals(discarded, store.finish(a, ok(old), tokyo, true))
+        assertTrue(store.merged().isEmpty())
+        assertFalse(store.coveredWeeks().contains(nov22)) // 印は解除、未取得部分は再試行可能
+        val retry = store.markInFlight(EventWindow(nov22))
+        assertEquals(applied, store.finish(retry, ok(emptyList()), tokyo, true))
+    }
+
+    @Test
+    fun newerDisjointSuccessDoesNotDiscardOlderFetch() {
+        val store = EventWindowStore()
+        val a = store.markInFlight(EventWindow(nov29))
+        val b = store.markInFlight(EventWindow(nov29.plusWeeks(6)))
+        assertEquals(applied, store.finish(b, ok(emptyList()), tokyo, true))
+        assertEquals(applied, store.finish(a, ok(page1().first), tokyo, true))
+        assertEquals(page1().first, store.merged())
+    }
+
+    @Test
     fun olderScrollFetchReturningBeforeSyncNowIsDiscardedAndSyncNowDecides() {
         val store = EventWindowStore()
         val w = EventWindow(nov29)

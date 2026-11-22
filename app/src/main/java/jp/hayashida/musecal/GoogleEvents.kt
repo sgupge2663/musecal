@@ -256,6 +256,9 @@ class EventWindowStore {
     /** 取得中の窓（開始日）→ その窓の最新の要求番号。同じ窓に要求が重なったら最新の要求の結果だけを反映する。 */
     private val inFlight = HashMap<LocalDate, Long>()
     private var requestSeq = 0L
+    private data class AppliedWindow(val min: Instant, val max: Instant, val request: Long)
+    // 空の成功応答（削除）も記録する。loaded の予定が後で除去されても順序の保証は残す。
+    private val appliedWindows = HashMap<LocalDate, AppliedWindow>()
 
     /** reset のたびに増える。取得開始時の値と反映時の値が違えば、その結果は捨てる。 */
     var generation = 0L
@@ -275,7 +278,7 @@ class EventWindowStore {
     }
 
     fun reset() {
-        loaded.clear(); inFlight.clear(); generation++
+        loaded.clear(); inFlight.clear(); appliedWindows.clear(); generation++
     }
 
     /** 取得済み＋取得中の週。 */
@@ -295,7 +298,7 @@ class EventWindowStore {
     /**
      * [markInFlight] で始めた取得の結果を反映する（スクロール由来・今すぐ同期の共通経路）。
      * 捨てるのは: reset 後（アカウント・タブが変わった）、[stillCurrent]=false（札が古い）、
-     * 同じ窓に新しい要求が出ている、取り消し（画面を離れた等）。失敗しても取得済みの予定は消さない。
+     * 同じ窓に新しい要求が出ている、重なる窓に新しい成功結果が適用済み、取り消し（画面を離れた等）。失敗しても取得済みの予定は消さない。
      * [zone] は取得時の端末タイムゾーン。
      */
     fun finish(p: Pending, result: Result<List<CalEvent>>, zone: ZoneId, stillCurrent: Boolean): Outcome {
@@ -309,8 +312,7 @@ class EventWindowStore {
             fail(p.window)
             return if (e is kotlinx.coroutines.CancellationException) Outcome.Discarded else Outcome.Failed(e)
         }
-        put(p.window, events, zone)
-        return Outcome.Applied
+        return if (put(p.window, events, zone, p.request)) Outcome.Applied else Outcome.Discarded
     }
 
     fun fail(w: EventWindow) {
@@ -318,15 +320,25 @@ class EventWindowStore {
     }
 
     /** [zone] はその窓を取得したときの端末タイムゾーン（events.list に渡した timeMin/timeMax と同じもの）。 */
-    fun put(w: EventWindow, events: List<CalEvent>, zone: ZoneId) {
+    fun put(w: EventWindow, events: List<CalEvent>, zone: ZoneId): Boolean =
+        put(w, events, zone, ++requestSeq)
+
+    private fun put(w: EventWindow, events: List<CalEvent>, zone: ZoneId, request: Long): Boolean {
         inFlight -= w.start
-        loaded.remove(w.start)
         val timeMin = w.timeMin(zone)
         val timeMax = w.timeMax(zone)
+        // 開始日が異なっても、新しい成功応答の範囲に触れる旧応答は全体を捨てる。
+        // 未取得の部分は coveredWeeks に加わらず、次のスクロール取得で再試行できる。
+        if (appliedWindows.values.any { it.request > request && it.min < timeMax && it.max > timeMin }) {
+            return false
+        }
+        appliedWindows[w.start] = AppliedWindow(timeMin, timeMax, request)
+        loaded.remove(w.start)
         for (key in loaded.keys.toList()) {
             loaded[key] = loaded.getValue(key).filterNot { it.matchedBy(w, timeMin, timeMax) }
         }
         loaded[w.start] = events // 末尾 = 最新
+        return true
     }
 
     /**

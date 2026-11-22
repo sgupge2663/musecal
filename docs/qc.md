@@ -167,3 +167,8 @@ JVM スクショテスト（Roborazzi + Robolectric、エミュレータなし�
 - JVM: EventCacheTest 5件を追加。実施結果・保存仕様は changes/2026-11-21-v1-google-sync/tasks.md の V1-4 を参照。
 - 画像: month_view.png は「最終取得 M/d HH:mm」とメール省略部分のみを更新。比較差分は (145,207)–(420,239)。他2画面は不変。画像比較後の単体69件は失敗0、省略1。
 - 実機ケースと見た目のユーザー判定は未実施・受理待ち（ユーザー側で確認）。独立レビューは Claude Code 待ち。
+
+### 2026-11-22 V1-5 未ログイン・取得エラー（著者 Codex）
+- 固定回帰: ScreenshotTest の signedOutRoot_hasOnlyGuide / failureWithoutCache_replacesMonth_andRetries / failureWithCache_keepsMonth_andWarnsOfAge / retryInProgress_disablesRetry。
+- 画像: app/src/test/screenshots/fetch_error_empty.png（月グリッドなし）と fetch_error_cached.png（予定＋最終取得日時と警告）。追加2枚を目視確認。従来3枚は変更しない。
+- 実機ではログアウト後の予定不存在、機内モードでキャッシュ有無の表示、通信復帰後の再試行、今すぐ同期との連打を確認する。実機スクショとユーザーによる UI 判定は未確認・受理待ち。

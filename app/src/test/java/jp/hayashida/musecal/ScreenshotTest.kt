@@ -6,6 +6,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.*
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.isDialog
@@ -103,6 +104,64 @@ class ScreenshotTest {
         }
         composeRule.waitForIdle()
         composeRule.onRoot().captureRoboImage(File("src/test/screenshots/sign_in_guide.png"))
+    }
+
+
+    @Test
+    fun signedOutRoot_hasOnlyGuide() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val auth = CalendarAuth(context)
+        composeRule.setContent {
+            MuseCalRoot(auth, androidx.compose.runtime.remember { mutableStateOf(fixedToday) })
+        }
+        composeRule.onNodeWithText("Google でログイン").assertExists()
+        composeRule.onAllNodes(hasScrollAction()).assertCountEquals(0)
+        composeRule.onNodeWithText("サインアウト").assertDoesNotExist()
+        composeRule.onNodeWithText("今日").assertDoesNotExist()
+    }
+
+    private fun setFailure(cached: Boolean, retrying: Boolean = false, onRetry: () -> Unit = {}) {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        // 予定を渡しても、取得成功の記録がなければグリッドを描かない。
+        val events = loadEvents(context, ZoneId.of("Asia/Tokyo"))
+        composeRule.setContent {
+            MaterialTheme(colorScheme = lightColorScheme()) {
+                MuseCalApp(
+                    events, androidx.compose.runtime.remember { mutableStateOf(fixedToday) }, "screenshot@example.jp", {}, emptyList(),
+                    failure = FetchFailureUi(
+                        "通信エラーで取得できませんでした。通信環境を確認して再試行してください。",
+                        if (cached) java.time.Instant.parse("2026-12-16T00:41:00Z") else null,
+                        retrying, onRetry,
+                    ),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun failureWithoutCache_replacesMonth_andRetries() {
+        var retries = 0
+        setFailure(false) { retries++ }
+        composeRule.onNodeWithText("予定はまだ取得できていません。").assertExists()
+        composeRule.onAllNodes(hasScrollAction()).assertCountEquals(0)
+        composeRule.onNodeWithText("再試行").performClick()
+        org.junit.Assert.assertEquals(1, retries)
+        composeRule.onRoot().captureRoboImage(File("src/test/screenshots/fetch_error_empty.png"))
+    }
+
+    @Test
+    fun failureWithCache_keepsMonth_andWarnsOfAge() {
+        setFailure(true)
+        composeRule.onNodeWithText("最終取得 12/16 09:41 の予定を表示しています。最新ではない可能性があります。").assertExists()
+        org.junit.Assert.assertTrue(composeRule.onAllNodes(hasScrollAction()).fetchSemanticsNodes().isNotEmpty())
+        composeRule.onNodeWithText("再試行").assertIsEnabled()
+        composeRule.onRoot().captureRoboImage(File("src/test/screenshots/fetch_error_cached.png"))
+    }
+
+    @Test
+    fun retryInProgress_disablesRetry() {
+        setFailure(false, true)
+        composeRule.onNodeWithText("再試行中…").assertIsNotEnabled()
     }
 
     @Test

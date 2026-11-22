@@ -207,7 +207,7 @@ class MainActivity : ComponentActivity() {
  * サインイン済みなら月表示に実データ（V1-3: events.list）を出す。取得失敗時はキャッシュ・保持分を表示する。
  */
 @Composable
-private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
+internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     val account by auth.account.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -229,6 +229,9 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     val cacheIo = remember { kotlinx.coroutines.sync.Mutex() }
     var dataEmail by remember { mutableStateOf<String?>(null) }
     var fetchedAt by remember { mutableStateOf<java.time.Instant?>(null) }
+    var fetchErrors by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    val fetchError = fetchErrors.values.firstOrNull()
+    var accessing by remember { mutableStateOf(false) }
     var startupRefresh by remember { mutableStateOf(false) }
     var retrySeq by remember { mutableStateOf(0L) }
 
@@ -247,7 +250,7 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     // トークンは保存せず、取得のたびに取り直す（認可済みなら無言で返る）。取れなければ理由つきで失敗にする。
     suspend fun calendarToken(): String = when (val access = auth.authorizeCalendar()) {
         is CalendarAuth.CalendarAccess.Granted -> access.accessToken
-        is CalendarAuth.CalendarAccess.ConsentRequired -> throw IOException("再度の許可が必要です")
+        is CalendarAuth.CalendarAccess.ConsentRequired -> throw SecurityException("再度の許可が必要です")
         is CalendarAuth.CalendarAccess.Failed -> throw IOException(access.error.message, access.error)
     }
 
@@ -263,11 +266,13 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
         if (!isCurrent(ticket) || store.generation != p.generation) throw kotlinx.coroutines.CancellationException("stale")
     }
 
-    fun showFetchFailure(e: Throwable) =
-        Toast.makeText(context, "予定を取得できませんでした: ${e.message}", Toast.LENGTH_LONG).show()
+    fun showFetchFailure(e: Throwable, key: String = "access") {
+        fetchErrors = fetchErrors + (key to fetchFailureMessage(e))
+    }
 
-    fun persistSuccess(ticket: AccountRequestGate.Ticket) {
+    fun persistSuccess(ticket: AccountRequestGate.Ticket, windows: List<EventWindow>) {
         events = store.merged()
+        fetchErrors = fetchErrors - windows.map { it.toString() }
         fetchedAt = store.lastFetchedAt
         val entry = EventCache.Entry(tabs, store.snapshot())
         scope.launch {
@@ -294,8 +299,8 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
             }
             // アカウント切替・サインアウト・タブの取り直し・同じ窓への新しい要求の後に返った結果は捨てる（成功・失敗とも）
             when (val o = store.finish(pending, result, zone, isCurrent(ticket))) {
-                EventWindowStore.Outcome.Applied -> persistSuccess(ticket)
-                is EventWindowStore.Outcome.Failed -> showFetchFailure(o.error)
+                EventWindowStore.Outcome.Applied -> persistSuccess(ticket, listOf(window))
+                is EventWindowStore.Outcome.Failed -> showFetchFailure(o.error, window.toString())
                 EventWindowStore.Outcome.Discarded -> if (isCurrent(ticket) && pending.generation == store.generation) retrySeq++
             }
         }
@@ -305,7 +310,7 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     // 取得・反映はスクロール由来と同じ経路（札・世代・窓ごとの要求番号）。失敗しても表示中の予定は消さない。
     fun syncNow() {
         val ticket = activeTicket ?: return
-        if (syncing || tabs.isEmpty() || !isCurrent(ticket)) return
+        if (syncing || accessing || tabs.isEmpty() || !isCurrent(ticket)) return
         val windows = windowsToRefresh(visibleWeeks)
         if (windows.isEmpty()) return
         val tabsSnapshot = tabs
@@ -326,11 +331,14 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
                         }
                     }.awaitAll()
                 }.map { (p, r) -> store.finish(p, r, zone, isCurrent(ticket)) }
-                if (outcomes.any { it == EventWindowStore.Outcome.Applied }) persistSuccess(ticket)
+                if (outcomes.any { it == EventWindowStore.Outcome.Applied }) persistSuccess(
+                    ticket, pendings.zip(outcomes).filter { it.second == EventWindowStore.Outcome.Applied }.map { it.first.window },
+                )
                 if (outcomes.any { it == EventWindowStore.Outcome.Discarded } && isCurrent(ticket)) retrySeq++
                 if (seq != syncSeq) return@launch
-                val failure = outcomes.firstNotNullOfOrNull { (it as? EventWindowStore.Outcome.Failed)?.error }
-                if (failure != null) showFetchFailure(failure)
+                pendings.zip(outcomes).forEach { (p, outcome) ->
+                    if (outcome is EventWindowStore.Outcome.Failed) showFetchFailure(outcome.error, p.window.toString())
+                }
             } finally {
                 if (seq == syncSeq) syncing = false
             }
@@ -341,8 +349,10 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
         scope.launch {
             val result = runCatching { CalendarListApi.fetchAll(accessToken) }
             if (!isCurrent(ticket)) return@launch   // 古い要求の結果（成功・失敗とも）は捨てる
+            accessing = false
             result
                 .onSuccess {
+                    fetchErrors = fetchErrors - "access"
                     val updated = mapCalendarTabs(it)
                     if (tabs != updated) {
                         store.reset()
@@ -350,9 +360,11 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
                         startupRefresh = true
                     }
                     tabs = updated
+                    startupRefresh = true
+                    retrySeq++
                 }
                 .onFailure {
-                    Toast.makeText(context, "カレンダー一覧を取得できませんでした: ${it.message}", Toast.LENGTH_LONG).show()
+                    showFetchFailure(it)
                 }
         }
     }
@@ -370,11 +382,13 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
         if (token != null) {
             loadCalendarList(ticket, token)
         } else {
-            Toast.makeText(context, "カレンダーへのアクセスが許可されませんでした", Toast.LENGTH_SHORT).show()
+            accessing = false
+            fetchErrors = fetchErrors + ("access" to "カレンダーへのアクセスが必要です。再試行を押して、読み取りを許可してください。")
         }
     }
 
     fun requestCalendarAccess(ticket: AccountRequestGate.Ticket) {
+        accessing = true
         scope.launch {
             val access = auth.authorizeCalendar()
             if (!isCurrent(ticket)) return@launch
@@ -385,12 +399,10 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
                     consentTicket = ticket
                     consentLauncher.launch(IntentSenderRequest.Builder(access.intentSender).build())
                 }
-                is CalendarAuth.CalendarAccess.Failed ->
-                    Toast.makeText(
-                        context,
-                        "カレンダーの許可を確認できませんでした: ${access.error.message}",
-                        Toast.LENGTH_LONG,
-                    ).show()
+                is CalendarAuth.CalendarAccess.Failed -> {
+                    accessing = false
+                    showFetchFailure(access.error)
+                }
             }
         }
     }
@@ -403,6 +415,8 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
         // V1-4a: 同期の表示は前のアカウントのものなので消す（進行中の同期の後始末は seq で無視される）
         syncSeq++
         syncing = false
+        accessing = false
+        fetchErrors = emptyMap()
         fetchedAt = null
         dataEmail = null
         store.reset()
@@ -453,9 +467,17 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
             onSignOut = { scope.launch { auth.signOut() } },
             tabs = if (dataEmail == current.email) tabs else emptyList(),
             onVisibleWeeksChange = { visibleWeeks = it; scrollStopSeq++ },
+            failure = if (dataEmail == current.email) fetchError?.let {
+                FetchFailureUi(it, fetchedAt, syncing || accessing) {
+                    if (!syncing && !accessing) {
+                        val ticket = activeTicket
+                        if ((tabs.isEmpty() || "access" in fetchErrors) && ticket != null) requestCalendarAccess(ticket) else syncNow()
+                    }
+                }
+            } else null,
             sync = SyncUi(
                 fetchedAt = if (dataEmail == current.email) fetchedAt else null,
-                syncing = syncing,
+                syncing = syncing || accessing,
                 enabled = tabs.isNotEmpty() && visibleWeeks.isNotEmpty(),
                 onSyncNow = { syncNow() },
             ),
@@ -555,6 +577,7 @@ fun MuseCalApp(
     onVisibleWeeksChange: (List<LocalDate>) -> Unit = {},
     /** V1-4a: 今すぐ同期ボタンの状態。null ならボタンを出さない。 */
     sync: SyncUi? = null,
+    failure: FetchFailureUi? = null,
 ) {
     val context = LocalContext.current
     // 非表示にしたカレンダーの calendarId
@@ -619,6 +642,10 @@ fun MuseCalApp(
                 "サインアウト", color = Color.White, fontSize = 12.sp,
                 modifier = Modifier.clickable(onClick = onSignOut).padding(horizontal = 8.dp, vertical = 2.dp),
             )
+        }
+        failure?.let {
+            FetchFailureNotice(it)
+            if (it.fetchedAt == null) return@Column
         }
         // 曜日ヘッダー（固定）
         Row(Modifier.fillMaxWidth().background(Color.White).padding(vertical = 4.dp)) {
@@ -1034,6 +1061,47 @@ private fun DottedSquareIcon() {
             val onEdge = i == 0 || j == 0 || i == n - 1 || j == n - 1
             val center = i == n / 2 && j == n / 2
             if (onEdge || center) drawCircle(PopupIconTint, r, Offset(i * step, j * step))
+        }
+    }
+}
+
+
+/** 取得エラーの詳細レスポンスやアカウント情報を画面に漏らさず、次の操作を示す。 */
+internal fun fetchFailureMessage(error: Throwable): String = when {
+    error is SecurityException ||
+        error is EventsApi.HttpError && error.code in listOf(401, 403) ||
+        error is CalendarListApi.HttpError && error.code in listOf(401, 403) ->
+        "読み取りの許可を確認できませんでした。再試行し、解消しない場合はサインアウトしてログインし直してください。"
+    error is EventsApi.IncompleteError ->
+        "予定を最後まで取得できませんでした。時間をおいて再試行してください。"
+    error is EventsApi.HttpError || error is CalendarListApi.HttpError ->
+        "Google カレンダーから取得できませんでした。時間をおいて再試行してください。"
+    error is java.io.IOException ->
+        "通信エラーで取得できませんでした。通信環境を確認して再試行してください。"
+    else -> "取得できませんでした。再試行し、解消しない場合はログインし直してください。"
+}
+
+data class FetchFailureUi(
+    val message: String,
+    val fetchedAt: java.time.Instant?,
+    val retrying: Boolean = false,
+    val onRetry: () -> Unit,
+)
+
+@Composable
+internal fun FetchFailureNotice(state: FetchFailureUi) {
+    Column(Modifier.fillMaxWidth().background(Color(0xFFFFF3E0)).padding(16.dp)) {
+        Text(state.message, color = Color(0xFF663C00), fontSize = 14.sp)
+        Text(
+            state.fetchedAt?.let {
+                val date = java.time.format.DateTimeFormatter.ofPattern("M/d HH:mm")
+                    .withZone(ZoneId.systemDefault()).format(it)
+                "最終取得 $date の予定を表示しています。最新ではない可能性があります。"
+            } ?: "予定はまだ取得できていません。",
+            color = Color(0xFF663C00), fontSize = 14.sp,
+        )
+        androidx.compose.material3.TextButton(onClick = state.onRetry, enabled = !state.retrying) {
+            Text(if (state.retrying) "再試行中…" else "再試行")
         }
     }
 }

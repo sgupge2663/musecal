@@ -106,7 +106,6 @@ import java.io.IOException
 import java.time.DayOfWeek
 import java.time.Duration
 import java.time.LocalDate
-import java.time.LocalTime
 import java.time.YearMonth
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -205,7 +204,7 @@ class MainActivity : ComponentActivity() {
 /**
  * V1-1: サインイン状態で画面を出し分ける入口。
  * 未サインイン時はサンプル予定を一切出さず、サインイン案内だけを出す（V1-5 の未ログイン画面を兼ねる）。
- * サインイン済みなら月表示に実データ（V1-3: events.list）を出す。取得前・取得失敗時は空で、サンプルは出さない。
+ * サインイン済みなら月表示に実データ（V1-3: events.list）を出す。取得失敗時はキャッシュ・保持分を表示する。
  */
 @Composable
 private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
@@ -223,9 +222,16 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     var consentTicket by remember { mutableStateOf<AccountRequestGate.Ticket?>(null) }
     fun isCurrent(ticket: AccountRequestGate.Ticket) = gate.isCurrent(ticket, auth.account.value?.email)
 
-    // V1-3: 予定。表示中の6週ウィンドウごとに取得し、在メモリで保持する（永続キャッシュは V1-4）。
-    // 取得前・取得失敗時は空のまま（サンプルで実データを装わない）。
+    // V1-3: 予定。表示中の6週ウィンドウごとに取得し、アカウント別に永続化する。
+    // 取得失敗時もキャッシュ・保持分を表示し続ける。
     val store = remember { EventWindowStore() }
+    val cache = remember { EventCache(java.io.File(context.filesDir, "event-cache")) }
+    val cacheIo = remember { kotlinx.coroutines.sync.Mutex() }
+    var dataEmail by remember { mutableStateOf<String?>(null) }
+    var fetchedAt by remember { mutableStateOf<java.time.Instant?>(null) }
+    var startupRefresh by remember { mutableStateOf(false) }
+    var retrySeq by remember { mutableStateOf(0L) }
+
     var events by remember { mutableStateOf<List<CalEvent>>(emptyList()) }
     // 今のアカウントの札（予定の取得もこの札で結果を判定する）。サインアウトで null。
     var activeTicket by remember { mutableStateOf<AccountRequestGate.Ticket?>(null) }
@@ -234,9 +240,8 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     var visibleWeeks by remember { mutableStateOf<List<LocalDate>>(emptyList()) }
     var scrollStopSeq by remember { mutableStateOf(0L) }
 
-    // V1-4a: 今すぐ同期の状態（メモリのみ。永続化は V1-4）。syncSeq はアカウント切替で進め、古い同期の後始末を無視する。
+    // V1-4: 今すぐ同期の実行状態。syncSeq はアカウント切替で進め、古い同期の後始末を無視する。
     var syncing by remember { mutableStateOf(false) }
-    var lastSyncedAt by remember { mutableStateOf<LocalTime?>(null) }
     var syncSeq by remember { mutableStateOf(0L) }
 
     // トークンは保存せず、取得のたびに取り直す（認可済みなら無言で返る）。取れなければ理由つきで失敗にする。
@@ -261,6 +266,22 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     fun showFetchFailure(e: Throwable) =
         Toast.makeText(context, "予定を取得できませんでした: ${e.message}", Toast.LENGTH_LONG).show()
 
+    fun persistSuccess(ticket: AccountRequestGate.Ticket) {
+        events = store.merged()
+        fetchedAt = store.lastFetchedAt
+        val entry = EventCache.Entry(tabs, store.snapshot())
+        scope.launch {
+            cacheIo.lock()
+            try {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    cache.write(ticket.accountEmail, entry)
+                }
+            } catch (_: Exception) {
+                Toast.makeText(context, "キャッシュを保存できませんでした", Toast.LENGTH_LONG).show()
+            } finally { cacheIo.unlock() }
+        }
+    }
+
     // スクロール由来の取得。markInFlight は呼び出し元のループの中で同期的に済ませる（続けて取得判定するため）。
     fun fetchEventWindow(ticket: AccountRequestGate.Ticket, tabsSnapshot: List<CalendarTab>, window: EventWindow) {
         val pending = store.markInFlight(window)
@@ -273,9 +294,9 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
             }
             // アカウント切替・サインアウト・タブの取り直し・同じ窓への新しい要求の後に返った結果は捨てる（成功・失敗とも）
             when (val o = store.finish(pending, result, zone, isCurrent(ticket))) {
-                EventWindowStore.Outcome.Applied -> events = store.merged()
+                EventWindowStore.Outcome.Applied -> persistSuccess(ticket)
                 is EventWindowStore.Outcome.Failed -> showFetchFailure(o.error)
-                EventWindowStore.Outcome.Discarded -> Unit
+                EventWindowStore.Outcome.Discarded -> if (isCurrent(ticket) && pending.generation == store.generation) retrySeq++
             }
         }
     }
@@ -305,13 +326,11 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
                         }
                     }.awaitAll()
                 }.map { (p, r) -> store.finish(p, r, zone, isCurrent(ticket)) }
-                if (outcomes.any { it == EventWindowStore.Outcome.Applied }) events = store.merged()
+                if (outcomes.any { it == EventWindowStore.Outcome.Applied }) persistSuccess(ticket)
+                if (outcomes.any { it == EventWindowStore.Outcome.Discarded } && isCurrent(ticket)) retrySeq++
                 if (seq != syncSeq) return@launch
                 val failure = outcomes.firstNotNullOfOrNull { (it as? EventWindowStore.Outcome.Failed)?.error }
-                when {
-                    failure != null -> showFetchFailure(failure)
-                    outcomes.all { it == EventWindowStore.Outcome.Applied } -> lastSyncedAt = LocalTime.now()
-                }
+                if (failure != null) showFetchFailure(failure)
             } finally {
                 if (seq == syncSeq) syncing = false
             }
@@ -323,7 +342,15 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
             val result = runCatching { CalendarListApi.fetchAll(accessToken) }
             if (!isCurrent(ticket)) return@launch   // 古い要求の結果（成功・失敗とも）は捨てる
             result
-                .onSuccess { tabs = mapCalendarTabs(it) }
+                .onSuccess {
+                    val updated = mapCalendarTabs(it)
+                    if (tabs != updated) {
+                        store.reset()
+                        // Keep the displayed cache until a replacement succeeds.
+                        startupRefresh = true
+                    }
+                    tabs = updated
+                }
                 .onFailure {
                     Toast.makeText(context, "カレンダー一覧を取得できませんでした: ${it.message}", Toast.LENGTH_LONG).show()
                 }
@@ -376,7 +403,10 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
         // V1-4a: 同期の表示は前のアカウントのものなので消す（進行中の同期の後始末は seq で無視される）
         syncSeq++
         syncing = false
-        lastSyncedAt = null
+        fetchedAt = null
+        dataEmail = null
+        store.reset()
+        events = emptyList()
         val email = current?.email
         if (email == null) {
             gate.invalidate()
@@ -384,21 +414,31 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
         } else {
             val ticket = gate.begin(email)
             activeTicket = ticket
+            cacheIo.lock()
+            val cached = try {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { cache.read(email) }
+            } finally { cacheIo.unlock() }
+            if (!isCurrent(ticket)) return@LaunchedEffect
+            cached?.let {
+                store.restore(it.snapshot)
+                tabs = it.tabs
+                events = store.merged()
+                fetchedAt = store.lastFetchedAt
+            }
+            dataEmail = email
+            startupRefresh = true
             requestCalendarAccess(ticket)
         }
     }
     // V1-3: アカウントかタブが変わったら予定を捨てて取り直す。表示中の週が取得済み・取得中の範囲から
     // はみ出したら、はみ出した最初の週から6週分を取る（1回のスクロールで足りない分は続けて取る）。
-    val storeKey = remember { arrayOfNulls<Any>(1) }
-    LaunchedEffect(activeTicket, tabs, visibleWeeks, scrollStopSeq) {
-        val key = activeTicket to tabs
-        if (storeKey[0] != key) {
-            storeKey[0] = key
-            store.reset()
-            events = emptyList()
-        }
+    LaunchedEffect(activeTicket, tabs, visibleWeeks, scrollStopSeq, retrySeq, dataEmail) {
         val ticket = activeTicket ?: return@LaunchedEffect
-        if (tabs.isEmpty() || !isCurrent(ticket)) return@LaunchedEffect
+        if (dataEmail != current?.email || tabs.isEmpty() || !isCurrent(ticket)) return@LaunchedEffect
+        if (startupRefresh && visibleWeeks.isNotEmpty()) {
+            startupRefresh = false
+            windowsToRefresh(visibleWeeks).forEach { fetchEventWindow(ticket, tabs, it) }
+        }
         while (true) {
             val w = windowToFetch(visibleWeeks, store.coveredWeeks()) ?: break
             fetchEventWindow(ticket, tabs, w)
@@ -408,14 +448,14 @@ private fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
         SignInScreen(auth) {}
     } else {
         MuseCalApp(
-            events, todayState,
+            if (dataEmail == current.email) events else emptyList(), todayState,
             accountEmail = current.email,
             onSignOut = { scope.launch { auth.signOut() } },
-            tabs = tabs,
+            tabs = if (dataEmail == current.email) tabs else emptyList(),
             onVisibleWeeksChange = { visibleWeeks = it; scrollStopSeq++ },
             sync = SyncUi(
+                fetchedAt = if (dataEmail == current.email) fetchedAt else null,
                 syncing = syncing,
-                lastSyncedAt = lastSyncedAt,
                 enabled = tabs.isNotEmpty() && visibleWeeks.isNotEmpty(),
                 onSyncNow = { syncNow() },
             ),
@@ -573,7 +613,7 @@ fun MuseCalApp(
                 accountEmail, color = Color(0xFFBBBBBB), fontSize = 12.sp,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
             )
-            // V1-4a：今すぐ同期（同期中は押せず「同期中…」。成功したら最終同期時刻を左に出す）
+            // V1-4a：今すぐ同期（同期中は押せず「同期中…」。最終取得日時を左に出す）
             sync?.let { SyncNowControl(it) }
             Text(
                 "サインアウト", color = Color.White, fontSize = 12.sp,
@@ -628,20 +668,20 @@ fun MuseCalApp(
     popupDate?.let { d -> DayPopup(d, index.eventsOn(d)) { popupDate = null } }
 }
 
-/** V1-4a: 今すぐ同期ボタンに渡す状態。最終同期時刻は今すぐ同期が成功したときだけ更新する（メモリのみ）。 */
+/** V1-4a: 今すぐ同期ボタンに渡す状態。最終取得日時は自動・手動共通の成功日時（永続化）。 */
 data class SyncUi(
     val syncing: Boolean,
-    val lastSyncedAt: LocalTime?,
     val enabled: Boolean,
     val onSyncNow: () -> Unit,
+    val fetchedAt: java.time.Instant? = null,
 )
 
-private val SYNC_HM = DateTimeFormatter.ofPattern("HH:mm")
 
 @Composable
 private fun SyncNowControl(s: SyncUi) {
-    s.lastSyncedAt?.let {
-        Text("最終同期 ${it.format(SYNC_HM)}", color = Color(0xFFBBBBBB), fontSize = 11.sp, maxLines = 1)
+    if (s.fetchedAt != null) {
+        Text("最終取得 ${s.fetchedAt.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("M/d HH:mm"))}",
+            color = Color(0xFFBBBBBB), fontSize = 11.sp, maxLines = 1)
     }
     val canPress = s.enabled && !s.syncing
     Text(

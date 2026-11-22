@@ -22,7 +22,6 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
 import java.time.LocalDate
-import java.time.LocalTime
 import java.time.ZoneId
 
 /**
@@ -42,6 +41,17 @@ import java.time.ZoneId
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = "w360dp-h800dp-xxhdpi")
 class ScreenshotTest {
+    private var originalZone = java.util.TimeZone.getDefault()
+
+    @org.junit.Before fun fixTimezone() {
+        originalZone = java.util.TimeZone.getDefault()
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Asia/Tokyo"))
+    }
+
+    @org.junit.After fun restoreTimezone() {
+        java.util.TimeZone.setDefault(originalZone)
+    }
+
 
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
@@ -67,8 +77,8 @@ class ScreenshotTest {
                             CalendarListEntry("ja.japanese#holiday@group.v.calendar.google.com", "日本の祝日", backgroundColor = "#9a9cff"),
                         )
                     ),
-                    // V1-4a: 今すぐ同期ボタン。最終同期時刻の表示も固定するため、同期済み（09:41）の状態で描く
-                    sync = SyncUi(syncing = false, lastSyncedAt = LocalTime.of(9, 41), enabled = true, onSyncNow = {}),
+                    // V1-4a: 今すぐ同期ボタン。最終取得日時の表示も固定するため、取得済み（12/16 09:41）の状態で描く
+                    sync = SyncUi(syncing = false, fetchedAt = java.time.Instant.parse("2026-12-16T00:41:00Z"), enabled = true, onSyncNow = {}),
                 )
             }
         }

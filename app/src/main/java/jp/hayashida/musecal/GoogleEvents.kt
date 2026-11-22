@@ -20,7 +20,7 @@ import java.time.format.DateTimeFormatter
  *   はみ出したら、はみ出した最初の週から6週分を取り直す
  * - [googleEventToCalEvent] / [parseEventsPage]: Calendar API v3 events.list の JSON を既存モデル [CalEvent] へ変換する
  * - [EventsApi]: events.list を REST で直接呼ぶ（singleEvents=true、orderBy=startTime、pageToken で全ページ）
- * - [EventWindowStore]: 取得結果の在メモリ保持（永続キャッシュは V1-4）
+ * - [EventWindowStore]: 取得結果の保持と永続化用 snapshot
  */
 
 /** 取得単位。[start]（日曜）から6週分（42日）。 */
@@ -277,7 +277,20 @@ class EventWindowStore {
         data object Discarded : Outcome
     }
 
+    data class Snapshot(val windows: Map<LocalDate, List<CalEvent>>, val fetchedAt: Instant?)
+    var lastFetchedAt: Instant? = null
+        private set
+
+    fun snapshot() = Snapshot(LinkedHashMap(loaded), lastFetchedAt)
+
+    fun restore(snapshot: Snapshot) {
+        reset()
+        loaded.putAll(snapshot.windows)
+        lastFetchedAt = snapshot.fetchedAt
+    }
+
     fun reset() {
+        lastFetchedAt = null
         loaded.clear(); inFlight.clear(); appliedWindows.clear(); generation++
     }
 
@@ -328,7 +341,7 @@ class EventWindowStore {
         val timeMin = w.timeMin(zone)
         val timeMax = w.timeMax(zone)
         // 開始日が異なっても、新しい成功応答の範囲に触れる旧応答は全体を捨てる。
-        // 未取得の部分は coveredWeeks に加わらず、次のスクロール取得で再試行できる。
+        // 未取得の部分は coveredWeeks に加わらず、破棄後の取得再判定で再試行できる。
         if (appliedWindows.values.any { it.request > request && it.min < timeMax && it.max > timeMin }) {
             return false
         }
@@ -337,6 +350,7 @@ class EventWindowStore {
         for (key in loaded.keys.toList()) {
             loaded[key] = loaded.getValue(key).filterNot { it.matchedBy(w, timeMin, timeMax) }
         }
+        lastFetchedAt = Instant.now()
         loaded[w.start] = events // 末尾 = 最新
         return true
     }

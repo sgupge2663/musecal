@@ -229,6 +229,14 @@ object EventsApi {
         } finally { conn.disconnect() }
     }
 
+    internal suspend fun fetchEvent(accessToken: String, original: CalEvent, scope: EditScope, zone: ZoneId): CalEvent =
+        withContext(Dispatchers.IO) {
+            val id = requireNotNull(editingEventId(original, scope))
+            val json = JSONObject(get(BASE + pathSegment(original.calendarId) + "/events/" + pathSegment(id), accessToken))
+            requireNotNull(googleEventToCalEvent(json,
+                CalendarTab(original.calendarId, original.calendarName, original.calendarColor), zone))
+        }
+
     suspend fun move(accessToken: String, original: CalEvent, destination: String): CalEvent = withContext(Dispatchers.IO) {
         require(original.recurringEventId == null)
         val url = BASE + pathSegment(original.calendarId) + "/events/" + pathSegment(requireNotNull(original.eventId)) +

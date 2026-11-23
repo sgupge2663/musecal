@@ -163,6 +163,30 @@ class ScreenshotTest {
         org.junit.Assert.assertEquals(listOf(DeleteScope.ALL_EVENTS), sent)
     }
 
+    @Test fun eventEditor_recurringScope() {
+        val selected = mutableStateOf(EditScope.THIS_EVENT)
+        composeRule.setContent {
+            MaterialTheme(colorScheme = lightColorScheme()) {
+                EventEditor(
+                    EventDraft(title = "毎週の打ち合わせ", start = fixedToday.atTime(9, 0),
+                        end = fixedToday.atTime(10, 0), calendarId = "test"),
+                    listOf(CalendarTab("test", "メイン", androidx.compose.ui.graphics.Color.Gray)),
+                    editing = true, calendarLocked = selected.value == EditScope.THIS_EVENT,
+                    editScope = selected.value, onEditScope = { selected.value = it },
+                    onCancel = {}, onSave = {},
+                )
+            }
+        }
+        composeRule.onNodeWithText("● この予定のみ").assertIsDisplayed()
+        composeRule.onNodeWithText("○ すべての予定").assertIsDisplayed()
+        composeRule.onRoot().captureRoboImage(File("src/test/screenshots/event_editor_recurring_scope.png"))
+        composeRule.onNodeWithText("タイトル").performTextReplacement("単体の入力")
+        composeRule.onNodeWithText("○ すべての予定").performClick()
+        composeRule.onNodeWithText("毎週の打ち合わせ").assertIsDisplayed()
+        composeRule.onNodeWithText("単体の入力").assertDoesNotExist()
+        composeRule.onNodeWithText("● すべての予定").assertIsDisplayed()
+    }
+
     @Test fun eventEditor_edit() {
         composeRule.setContent {
             MaterialTheme(colorScheme = lightColorScheme()) {

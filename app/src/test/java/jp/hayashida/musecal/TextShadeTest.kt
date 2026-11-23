@@ -47,4 +47,44 @@ class TextShadeTest {
         // 暗い背景では対称変換 (L=0.496 -> 0.637)
         assertEquals(Color(0xFFE75E62), textShade(Color(0xFFDC2127), Color.Black))
     }
+
+    @Test
+    fun blackOnWhite() {
+        // #000000 (S=0, L=0): L' = 0 × 0.72 = 0 -> RGB=0 (#000000)
+        assertEquals(Color(0xFF000000), textShade(Color.Black, Color.White))
+    }
+
+    @Test
+    fun blackOnBlack() {
+        // #000000 (S=0, L=0): L' = 1 − (1 − 0) × 0.72 = 0.28
+        // S=0 なので RGB = round(0.28 × 255) = 71 (#474747)。色相は不定。
+        assertEquals(Color(0xFF474747), textShade(Color.Black, Color.Black))
+    }
+
+    @Test
+    fun whiteOnWhite() {
+        // #FFFFFF (S=0, L=1): L' = 1 × 0.72 = 0.72
+        // S=0 なので RGB = round(0.72 × 255) = 184 (#B8B8B8)。色相は不定。
+        assertEquals(Color(0xFFB8B8B8), textShade(Color.White, Color.White))
+    }
+
+    @Test
+    fun whiteOnBlack() {
+        // #FFFFFF (S=0, L=1): L' = 1 − (1 − 1) × 0.72 = 1 -> RGB=255 (#FFFFFF)
+        assertEquals(Color(0xFFFFFFFF), textShade(Color.White, Color.Black))
+    }
+
+    @Test
+    fun grayOnWhite() {
+        // 中間グレー #808080 (S=0, L=128/255): L' = (128/255) × 0.72
+        // S=0 なので RGB = round(128 × 0.72) = round(92.16) = 92 (#5C5C5C)。色相は不定。
+        assertEquals(Color(0xFF5C5C5C), textShade(Color(0xFF808080), Color.White))
+    }
+
+    @Test
+    fun grayOnBlack() {
+        // 中間グレー #808080 (S=0, L=128/255): L' = 1 − (1 − 128/255) × 0.72
+        // S=0 なので RGB = round(255 − 127 × 0.72) = round(163.56) = 164 (#A4A4A4)。色相は不定。
+        assertEquals(Color(0xFFA4A4A4), textShade(Color(0xFF808080), Color.Black))
+    }
 }

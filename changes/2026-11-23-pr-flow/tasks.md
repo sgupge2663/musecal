@@ -7,13 +7,13 @@
   - 完了条件: ルールセットが active で、設定内容が proposal の決定と一致する
   - 検証方法: gh api で設定を読み戻して照合する
 
-- [ ] PRF-2 AGENTS.md ブランチ運用の改訂（Codex 実装、Muse レビュー）
+- [x] PRF-2 AGENTS.md ブランチ運用の改訂（Codex 実装、Muse レビュー）
   - 内容: 統合手順を PR 前提に書き換える（ブランチ push → PR 作成 → CI → レビュア役が PR にレビュー投稿＋work/ 記録をブランチへコミット → gh pr merge --merge → ローカル側の prune / audit）。記録相乗りルール（決定2）と、Approve が使えないことの明記（決定4）を含む。従来の「Muse がローカルで merge する」記述を置き換える
   - 完了条件: 改訂後の手順だけで統合が再現でき、現行手順との矛盾が残っていない
   - 検証方法: レビューで proposal の決定事項と突き合わせる
   - 実装記録（2026-11-23、Codex）: AGENTS.md「ブランチ運用」を PR の merge commit 前提に改訂。直接 push 禁止・バイパスなし、PR コメント＋work/ 記録、記録相乗り、最終コミットの CI 確認、GitHub 自動削除とローカル prune / audit を明記。STATUS.md は変更していない。proposal との自己照合済み。Muse によるレビュー・受理は未実施。
 
-- [ ] PRF-3 branch_ops.sh の追随（Codex 実装、Muse レビュー）
+- [x] PRF-3 branch_ops.sh の追随（Codex 実装、Muse レビュー）
   - 内容: prune が「リモートブランチが既に GitHub に削除済み」を正常として扱えるようにする。audit の判定（統合済みなのに残っているブランチの検出）は変えない。ローカルブランチと worktree の片づけは従来どおり
   - 完了条件: リモート削除済み・ローカル残存の状態で prune が成功し、audit がクリーンになることが再現できる
   - 検証方法: 実証（PRF-4）の prune で確認する

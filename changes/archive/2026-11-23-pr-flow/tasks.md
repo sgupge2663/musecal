@@ -2,7 +2,7 @@
 
 正本は proposal.md。検証方法は EM-3 のフロー（エージェント一次判定→ユーザーは最終判定のみ）。
 
-- [ ] PRF-1 GitHub 設定とルールセット（Muse が実施）
+- [x] PRF-1 GitHub 設定とルールセット（Muse が実施）
   - 内容: リポジトリ設定で「merge commit のみ許可」「マージ後にヘッドブランチを自動削除」を有効化する。main のルールセットを作成する: PR 経由必須、必須ステータスチェック = Build APK の build ジョブ、force push 禁止、バイパスアクターなし、up-to-date 要求なし。有効化は PRF-2/PRF-3 のブランチが push され、レビューと記録相乗りまで終わった直後に行う
   - 完了条件: ルールセットが active で、設定内容が proposal の決定と一致する
   - 検証方法: gh api で設定を読み戻して照合する
@@ -21,7 +21,12 @@
   - 検証記録: bash -n と git diff --check が成功。一時リポジトリ6ケース（自動削除後 fetch あり／追跡参照残存、通常削除、リモート SHA 更新、通信失敗、upstream による branch -d 拒否）がすべて成功。削除成功3ケースで worktree・ローカルブランチの除去と audit のクリーンを確認。SHA 更新時はリモートを保護し、branch -d 拒否時はローカル・リモート・worktree を保持。本番での実証・Muse レビューは PRF-4 側で実施待ち。
   - 共通検証: 主作業ツリーの scripts/env.sh を source し、./scripts/check.sh（assembleDebug / testDebugUnitTest / lintDebug）が成功。初回は既存の中継プロキシ未起動で依存取得に失敗したが、既存 scripts/auth_relay_proxy.py を起動して再実行し解消。共有 Gradle キャッシュへの書き込み権限を付けて実行し、チェックの省略はしていない。次のアクションは Muse のレビューと PRF-1／PRF-4。
 
-- [ ] PRF-4 実証（Muse が実施）
+- [x] PRF-4 実証（Muse が実施）
   - 内容: PRF-2/PRF-3 のブランチを、ルールセット有効化後に PR 化し、新フローで統合する。あわせて直接 push が拒否されることを負の対照（小さなコミットの push 試行→拒否→取り消し）で確認する
   - 完了条件: PR 経由で main に統合され、直接 push の拒否が記録され、prune / audit がクリーン
   - 検証方法: PR の URL と CI・拒否の出力を記録する
+
+## 統合記録（2026-11-23、Muse）
+- PRF-1: リポジトリ設定（merge commit のみ・マージ後ブランチ自動削除）とルールセット main-pr-gate（id 27868970、PR 必須＋必須チェック build＋force push 禁止＋バイパスなし）を有効化し、読み戻して照合した。
+- PRF-4: PR #1（https://github.com/sgupge2663/musecal/pull/1）で新フローを実証。必須チェック成功後に gh pr merge --merge で統合（merge commit 274273a）。負の対照: main への直接 push は "push declined due to repository rule violations" で拒否された。リモートブランチは GitHub が自動削除し、prune はローカル側のみを片づけて audit クリーン（PRF-3 の実地検証を兼ねる）。
+- 本記録は新ルールどおり作業ブランチに相乗りし、PR 経由で統合される。

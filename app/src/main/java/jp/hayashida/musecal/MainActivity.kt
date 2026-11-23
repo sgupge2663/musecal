@@ -213,8 +213,10 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
 
     // V1-2: calendarList から対応づけた下部タブ。取得できるまでは空（サンプルのタブで実データを装わない）。
     var writableTabs by remember { mutableStateOf<List<CalendarTab>>(emptyList()) }
+    var editScope by remember { mutableStateOf(EditScope.THIS_EVENT) }
+    var editReady by remember { mutableStateOf(true) }
+    var seriesInstance by remember { mutableStateOf<CalEvent?>(null) }
     var editingEvent by remember { mutableStateOf<CalEvent?>(null) }
-    var recurringChoice by remember { mutableStateOf<CalEvent?>(null) }
     var editor by remember { mutableStateOf<EventDraft?>(null) }
     var saving by remember { mutableStateOf(false) }
     var saveError by remember { mutableStateOf<String?>(null) }
@@ -418,7 +420,6 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
     // 認可済みなら同意画面は出ずにトークンが返る。サインアウトしたらタブを消し、進行中の要求の札を無効にする。
     LaunchedEffect(current?.email) {
         editingEvent = null
-        recurringChoice = null
         editor = null
         saveError = null
         saving = false
@@ -482,11 +483,15 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
             onEvent = { event ->
                 saveError = null
                 editingEvent = event
-                if (event.recurringEventId != null && writableTabs.any { it.calendarId == event.calendarId }) recurringChoice = event
-                else editor = event.toDraft()
+                seriesInstance = event
+                editScope = EditScope.THIS_EVENT
+                editReady = true
+                editor = event.toDraft()
             },
             onCreate = {
                 editingEvent = null
+                seriesInstance = null
+                editReady = true
                 val start = todayState.value.atTime(9, 0)
                 editor = EventDraft(start = start, end = start.plusHours(1), calendarId = writableTabs.firstOrNull()?.calendarId.orEmpty())
                 saveError = null
@@ -508,27 +513,53 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
                 onSyncNow = { syncNow() },
             ),
         )
-        recurringChoice?.let { event ->
-            androidx.compose.material3.AlertDialog(
-                onDismissRequest = { recurringChoice = null },
-                title = { Text("繰り返し予定の編集") },
-                text = { Text("すべての予定の編集は未対応です。この予定のみ編集できます。") },
-                confirmButton = { androidx.compose.material3.TextButton(onClick = {
-                    editor = event.toDraft(); recurringChoice = null
-                }) { Text("この予定のみ") } },
-                dismissButton = { androidx.compose.material3.TextButton(onClick = {}, enabled = false) { Text("すべての予定") } },
-            )
-        }
         if (editor != null) {
         EventEditor(editor!!, (writableTabs + tabs.filter { it.calendarId == editingEvent?.calendarId }).distinctBy { it.calendarId }, saving, saveError,
             editing = editingEvent != null,
             readOnly = editingEvent?.let { e -> e.eventId == null || writableTabs.none { it.calendarId == e.calendarId } } ?: false,
             calendarLocked = editingEvent?.recurringEventId != null,
-            deleteTitle = editingEvent?.title.orEmpty(),
-            onDelete = editingEvent?.let { original -> { deleteScope ->
+            editScope = editScope,
+            editReady = editReady,
+            onEditScope = seriesInstance?.takeIf { it.recurringEventId != null }?.let { instance -> { selected ->
+                val ticket = activeTicket
+                if (ticket != null && isCurrent(ticket) && !saving) {
+                    editScope = selected
+                    saveError = null
+                    editReady = false
+                    if (selected == EditScope.THIS_EVENT) {
+                        editingEvent = instance
+                        editor = instance.toDraft()
+                        editReady = true
+                    } else {
+                        saving = true
+                        scope.launch {
+                            try {
+                                val token = calendarToken()
+                                if (!isCurrent(ticket)) return@launch
+                                require(writableTabs.any { it.calendarId == instance.calendarId })
+                                val master = EventsApi.fetchEvent(token, instance, selected, ZoneId.systemDefault())
+                                if (isCurrent(ticket)) {
+                                    editingEvent = master
+                                    editor = master.toDraft()
+                                    editReady = true
+                                }
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                if (isCurrent(ticket)) saveError = "マスター予定を取得できませんでした。" + fetchFailureMessage(e)
+                            } finally {
+                                if (isCurrent(ticket)) saving = false
+                            }
+                        }
+                    }
+                }
+            } },
+            recurringDeletion = seriesInstance?.recurringEventId != null,
+            deleteTitle = (seriesInstance ?: editingEvent)?.title.orEmpty(),
+            onDelete = (seriesInstance ?: editingEvent)?.let { original -> { deleteScope ->
                 val ticket = activeTicket
                 val id = deletionEventId(original, writableTabs.any { it.calendarId == original.calendarId }, true, deleteScope)
-                if (ticket != null && isCurrent(ticket) && !saving && id != null) {
+                if (ticket != null && isCurrent(ticket) && !saving && editReady && id != null) {
                     saving = true
                     saveError = null
                     scope.launch {
@@ -554,7 +585,7 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
             onCancel = { editor = null },
             onSave = { draft ->
                 val ticket = activeTicket
-                if (ticket != null && isCurrent(ticket) && !saving) {
+                if (ticket != null && isCurrent(ticket) && !saving && editReady) {
                     saving = true
                     saveError = null
                     scope.launch {
@@ -571,15 +602,16 @@ internal fun MuseCalRoot(auth: CalendarAuth, todayState: State<LocalDate>) {
                                     val moved = EventsApi.move(token, original, draft.calendarId)
                                     if (!isCurrent(ticket)) return@launch
                                     movedCalendar = true
+                                    seriesInstance = null
                                     editingEvent = moved // 更新失敗時の再試行も移動先を使う
-                                    syncNow(listOf(EventWindow(sundayOf(original.startDate))))
+                                    syncNow((if (editScope == EditScope.ALL_EVENTS) store.snapshot().windows.keys.map { EventWindow(it) } else emptyList()) + EventWindow(sundayOf(original.startDate)))
                                     moved
                                 } else original
                                 EventsApi.update(token, target, draft, ZoneId.systemDefault())
                             }
                             if (isCurrent(ticket)) {
                                 editor = null
-                                syncNow(listOfNotNull(EventWindow(sundayOf(draft.start.toLocalDate())), original?.let { EventWindow(sundayOf(it.startDate)) }))
+                                syncNow((if (editScope == EditScope.ALL_EVENTS) store.snapshot().windows.keys.map { EventWindow(it) } else emptyList()) + listOfNotNull(EventWindow(sundayOf(draft.start.toLocalDate())), original?.let { EventWindow(sundayOf(it.startDate)) }))
                             }
                         } catch (e: kotlinx.coroutines.CancellationException) {
                             throw e

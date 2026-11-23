@@ -15,6 +15,28 @@ class EventEditTest {
       "end":${if (allDay) """{"date":"2026-12-18"}""" else """{"dateTime":"2026-12-17T00:00:00+09:00"}"""}
     }"""), CalendarTab("test", "メイン", Color.Gray), zone)!!
 
+    @Test fun editScopeTargetsMasterOrOriginalInstance() {
+        val instance = event(false)
+        assertEquals("instance", editingEventId(instance, EditScope.THIS_EVENT))
+        assertEquals("master", editingEventId(instance, EditScope.ALL_EVENTS))
+        assertEquals("instance", editingEventId(instance.copy(recurringEventId = null), EditScope.THIS_EVENT))
+    }
+
+    @Test fun seriesUpdateUsesMasterDatesAndPreservesRecurrence() {
+        val master = JSONObject("""{"id":"master","etag":"version","summary":"series",
+          "start":{"dateTime":"2026-10-01T09:00:00+09:00"},
+          "end":{"dateTime":"2026-10-01T10:00:00+09:00"},
+          "recurrence":["RRULE:FREQ=WEEKLY"],"reminders":{"useDefault":true}}""")
+        val tab = CalendarTab("test", "メイン", Color.Gray)
+        val draft = googleEventToCalEvent(master, tab, zone)!!.toDraft()
+        assertEquals("2026-10-01T09:00", draft.start.toString())
+        val result = updateEventBody(master, draft.copy(title = "changed", start = draft.start.plusHours(1), end = draft.end.plusHours(1)), zone)
+        assertEquals(master.getJSONArray("recurrence").toString(), result.getJSONArray("recurrence").toString())
+        assertEquals(master.getJSONObject("reminders").toString(), result.getJSONObject("reminders").toString())
+        assertEquals("version", result.getString("etag"))
+        assertEquals("2026-10-01T10:00:00+09:00", result.getJSONObject("start").getString("dateTime"))
+    }
+
     @Test fun deletionRequiresPermissionConfirmationAndCorrectIdentity() {
         val instance = event(true)
         val single = instance.copy(recurringEventId = null)

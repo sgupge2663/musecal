@@ -256,7 +256,7 @@ QC-03（終日・時間指定のレイアウト）、QC-04/05/07/08、および 
 - EventEditTest: `editScopeTargetsMasterOrOriginalInstance` で単体／マスターの保存対象 ID、`seriesUpdateUsesMasterDatesAndPreservesRecurrence` でマスター日時の利用、recurrence・通知・ETag の保持を固定。既存ケースでインスタンスの初期値、未編集の参加者等の保持も確認する。実 API への通信を検証するテストではない。
 - ScreenshotTest: `eventEditor_recurringScope` で既定の「この予定のみ」、範囲切替、等値 draft でも入力が初期化されることを固定。基準は `app/src/test/screenshots/event_editor_recurring_scope.png`。Muse の目視照合・ユーザーの最終画面判定は受理待ち。
 - SE-2 のローカル検証（2026-11-23）: 本体 `scripts/env.sh` を source して `./scripts/check.sh` 成功（assembleDebug / testDebugUnitTest / lintDebug OK、ログ `/tmp/se2-check.log`）。共有 Gradle キャッシュ書き込みのため権限拡張して実行。EventEditTest 6件・ScreenshotTest 14件は失敗0・エラー0・スキップ0。`git diff --check` 成功。
-- ブランチ CI: SE-1 `63ada2f` の [Build APK run 45178854097](https://github.com/sgupge2663/musecal/actions/runs/45178854097) は記録時点で実行中、成功未確認。SE-2 最終コミットの CI も push 後の確認対象。実サーバー更新・Web 一致・端末の操作感を示す証拠とは区別する。
+- ブランチ CI: SE-1 `63ada2f` の [Build APK run 45178854097](https://github.com/sgupge2663/musecal/actions/runs/45178854097) は失敗。ログで MavenArtifactFetcher の依存取得時の IOException を確認（102 tests、21 failed、1 skipped）。ローカル成功とは別に CI は未通過とする。SE-2 `3e00980` の [run 45179396735](https://github.com/sgupge2663/musecal/actions/runs/45179396735) は実行中。証拠追記後の最終コミットもブランチ CI の確認対象。実サーバー更新・Web 一致・端末の操作感を示す証拠とは区別する。
 
 #### 実機照合（すべて未確認）
 - 前提: 配布版・commit、端末・文字倍率、対象期間・タイムゾーン、照合時点を記録する。公開記録には新たな個人情報を転記しない。

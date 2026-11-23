@@ -2,7 +2,7 @@
 
 正本は proposal.md。
 
-- [ ] CH-1 build.yml の堅牢化（Codex 実装、Muse レビュー）
+- [x] CH-1 build.yml の堅牢化（Codex 実装、Muse レビュー）
   - 内容: (a) gradle/actions/setup-gradle を追加し Gradle 依存キャッシュを有効にする。(b) actions/cache で ~/.m2（Robolectric の android-all 等の実行時取得物）をキャッシュする。キーは gradle 関連ファイルのハッシュを含める。(c) vars ステップ（短縮 SHA）に if: always() を付け、失敗時も roborazzi-outputs-<短縮SHA> と正しく命名されるようにする。ジョブ名 build と実行コマンドは変えない
   - 完了条件: ブランチの CI が成功し、キャッシュの保存・復元がログで確認できる（初回は保存、再実行では復元）。成果物名が従来どおり付く
   - 検証方法: ブランチ CI のログと成果物（この変更自体の PR が検証を兼ねる）

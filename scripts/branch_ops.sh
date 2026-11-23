@@ -260,7 +260,14 @@ for b in "${DEL_REMOTE[@]}"; do
   sha=$(git rev-parse "refs/remotes/$REMOTE/$b")
   if ! is_integrated "$sha"; then echo "失敗: remote $b が統合済みでなくなりました（残します）" >&2; FAIL=1; continue; fi
   if git push --quiet --force-with-lease="refs/heads/$b:$sha" "$REMOTE" ":refs/heads/$b"; then echo "削除: remote $REMOTE/$b"
-  else echo "失敗: remote $REMOTE/$b を削除できませんでした" >&2; FAIL=1; fi
+  else
+    # GitHub の自動削除済み（判定後の削除も含む）だけを正常とする。
+    # --exit-code の 2 は参照なし。通信・認証エラーは成功扱いにしない。
+    git ls-remote --exit-code --heads "$REMOTE" "refs/heads/$b" >/dev/null
+    remote_status=$?
+    if [ "$remote_status" = 2 ]; then echo "削除済み: remote $REMOTE/$b（既に存在しません）"
+    else echo "失敗: remote $REMOTE/$b を削除できませんでした" >&2; FAIL=1; fi
+  fi
 done
 [ ${#DEL_LOCAL[@]} -eq 0 ] && [ ${#DEL_REMOTE[@]} -eq 0 ] && echo "削除対象: なし"
 for s in "${SKIPS[@]}"; do echo "対象外: $s"; done

@@ -17,16 +17,19 @@
 
 ## ブランチ運用（正本。担保は `scripts/branch_ops.sh`）
 - **命名**： 作業ブランチは `claude/<slug>` / `codex/<slug>`。worktree は `.worktrees/<agent>-<slug>` に作り、同じ `<slug>` でブランチと1対1に対応づける（例： `claude/branch-ops` ↔ `.worktrees/claude-branch-ops`）。
-- **統合**： main への統合と main の push は Muse だけが行う。統合の前に、そのブランチの最終コミットで CI（Build APK）が成功していることを確かめる。統合は fast-forward か merge で行う（squash・rebase で統合すると、ブランチの先端が main に含まれず `prune` が統合済みと判定できない）。
-- **統合後**： 統合したブランチは、ローカル・リモートとも削除し、対応する worktree も外す。残してよいのは未統合の作業ブランチだけ。手作業の台帳は作らない（状態は `scripts/branch_ops.sh audit` が git から毎回求める）。
+- **統合**： main への統合は PR 経由の merge commit のみとし、Muse が `gh pr merge --merge` で行う。main への直接 push はルールセットで禁止され、バイパスは置かない。squash・rebase は使わない（ブランチの先端が main に含まれる形を保ち、`prune` が統合済みと判定できるようにする）。
+- **レビューと記録**： 単一アカウント運用では自分の PR に GitHub の正式な Approve は使えない。著者とは別のレビュア役エージェントによる PR コメント＋従来の `work/` レビュー記録でレビューを担保する。機械化の範囲は「PR 経由必須＋CI 緑必須」。レビュー記録とタスクのチェック付けはマージ前の作業ブランチへコミットする（記録相乗り）。STATUS 等の横断記録も次の作業ブランチに相乗りし、統合後の main へ直接コミットしない。
+- **統合後**： リモートブランチは GitHub の自動削除で消す。ローカルブランチと対応する worktree は `scripts/branch_ops.sh prune` で片づける。残してよいのは未統合の作業ブランチだけ。手作業の台帳は作らない（状態は `scripts/branch_ops.sh audit` が git から毎回求める）。
 - **節目の記録**： 版や節目を残したいときはブランチでなくタグで残す。経緯の正本は git 履歴と `changes/` の収束記録で、ブランチは記録に使わない。
-- **統合手順**（Muse。main を checkout した主作業ツリーで行う）：
-  1. ブランチの最終コミットで CI（Build APK）が成功していることを確認する
-  2. main へ統合（fast-forward か merge）し、main を push する
-  3. `scripts/branch_ops.sh prune --dry-run` で削除対象を確かめ、`scripts/branch_ops.sh prune` で統合済みのブランチ（ローカル＋リモート）と worktree を片づける
-  4. `scripts/branch_ops.sh audit` が「クリーン」（終了コード 0）になることを確かめる。「保留」が出たら、その worktree の変更・使用状況を確かめてから片づける
+- **統合手順**：
+  1. 作業担当が作業ブランチを push し、PR を作成する
+  2. ブランチの CI（Build APK）が成功することを確認する
+  3. レビュア役エージェントが PR にレビューコメントを投稿し、従来の `work/` レビュー記録とタスクのチェック付けを作業ブランチへコミットして push する。記録相乗り後の最終コミットでも CI（Build APK）の成功を確認する
+  4. Muse が `gh pr merge --merge` で統合する（squash・rebase は使わない）
+  5. リモートブランチは GitHub の自動削除で消える
+  6. Muse が main を checkout した主作業ツリーで main を更新し、`scripts/branch_ops.sh prune --dry-run` で削除対象を確かめ、`scripts/branch_ops.sh prune` でローカルブランチと worktree を片づける。`scripts/branch_ops.sh audit` が「クリーン」（終了コード 0）になることを確かめる。「保留」が出たら、その worktree の変更・使用状況を確かめてから片づける
 - **prune が触らないもの**： main、未統合のブランチ、自分のコミットがまだ無いブランチ（作りたてや、main へ fast-forward しただけのものを含む）、使用中（実行中・主作業ツリー・lock 中）や未コミット変更ありの worktree、`git branch -d` が拒否する状態（upstream が古い等）のブランチ、それらと同名のリモートブランチ、同名ローカルの削除が実行中に失敗したリモートブランチ。`audit` の「prune で消せる」と `prune` が消すものは同じ判定から出る。
-- **削除の方法**： ローカルは `git branch -d` と `git worktree remove`（どちらも force なし。`-D`・`--force` は使わない）。リモートは、統合済みを確かめた SHA に限定した `git push --force-with-lease=refs/heads/<名前>:<SHA> origin :refs/heads/<名前>` で消す（リモートがその SHA から動いていたら拒否されて残る条件付き削除。無条件の force push はしない）。
+- **削除の方法**： ローカルは `git branch -d` と `git worktree remove`（どちらも force なし。`-D`・`--force` は使わない）。リモートが既に自動削除されていれば正常として扱う。残っているリモートは、統合済みを確かめた SHA に限定した `git push --force-with-lease=refs/heads/<名前>:<SHA> origin :refs/heads/<名前>` で消す（リモートがその SHA から動いていたら拒否されて残る条件付き削除。無条件の force push はしない）。
 
 ## ファイルの役割
 - `REQUIREMENTS.md` … 仕様の正本（What / Why）。実測値もここに記録する
